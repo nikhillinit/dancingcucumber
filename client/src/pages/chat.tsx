@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Send, MessageSquare, Users, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { ChatConversation, ChatMessage } from "@shared/schema";
 
 export default function Chat() {
   const [message, setMessage] = useState("");
@@ -18,34 +19,19 @@ export default function Chat() {
   const { toast } = useToast();
 
   // Get or create a conversation
-  const { data: conversations = [] } = useQuery({
+  const { data: conversations = [] } = useQuery<ChatConversation[]>({
     queryKey: ['/api/chat/conversations'],
   });
 
-  const { data: messages = [] } = useQuery({
-    queryKey: ['/api/chat/conversations', currentConversationId, 'messages'],
+  // Messages query with proper URL - always provide stable key, use enabled to control fetching
+  const messagesKey = `/api/chat/conversations/${currentConversationId ?? 'pending'}/messages`;
+  const { data: messages = [] } = useQuery<ChatMessage[]>({
+    queryKey: [messagesKey],
     enabled: !!currentConversationId,
   });
 
-  // Initialize conversation if none exists
-  useEffect(() => {
-    if (conversations.length === 0) {
-      createConversationMutation.mutate({
-        title: "Investment Advisory Chat",
-        status: "ACTIVE"
-      });
-    } else if (!currentConversationId) {
-      setCurrentConversationId(conversations[0].id);
-    }
-  }, [conversations]);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   const createConversationMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: { title: string; status: string }) => {
       const response = await apiRequest('POST', '/api/chat/conversations', data);
       return response.json();
     },
@@ -55,23 +41,76 @@ export default function Chat() {
     },
   });
 
+  // Initialize conversation if none exists
+  useEffect(() => {
+    if (conversations.length === 0 && !createConversationMutation.isPending) {
+      createConversationMutation.mutate({
+        title: "Investment Advisory Chat",
+        status: "ACTIVE"
+      });
+    } else if (conversations.length > 0 && !currentConversationId) {
+      setCurrentConversationId(conversations[0].id);
+    }
+  }, [conversations.length, currentConversationId, createConversationMutation.isPending]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const sendMessageMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: { role: string; content: string }) => {
       const response = await apiRequest('POST', `/api/chat/conversations/${currentConversationId}/messages`, data);
       return response.json();
     },
+    onMutate: async (newMessage: { role: string; content: string }) => {
+      const queryKey = [messagesKey];
+      
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey });
+
+      // Snapshot the previous value
+      const previousMessages = queryClient.getQueryData<ChatMessage[]>(queryKey);
+
+      // Optimistically update to the new value
+      const optimisticMessage: ChatMessage = {
+        id: `temp-${Date.now()}`,
+        conversationId: currentConversationId!,
+        role: newMessage.role,
+        content: newMessage.content,
+        metadata: null,
+        createdAt: new Date()
+      };
+
+      queryClient.setQueryData<ChatMessage[]>(queryKey, old => [...(old || []), optimisticMessage]);
+
+      // Return a context object with the snapshotted value
+      return { previousMessages, queryKey };
+    },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['/api/chat/conversations', currentConversationId, 'messages'] 
-      });
+      // Replace the optimistic update with the real data
+      queryClient.invalidateQueries({ queryKey: [messagesKey] });
+      
       if (data.aiMessage) {
         toast({
           title: "Advisory Team Response",
           description: "The investment team has provided their consensus opinion.",
         });
+      } else if (data.userMessage) {
+        // AI service failed but we got the user message - check if we should show a fallback
+        toast({
+          title: "AI Service Unavailable",
+          description: "Your message was sent, but the AI advisory team is temporarily unavailable.",
+          variant: "default",
+        });
       }
     },
-    onError: (error: any) => {
+    onError: (error: any, newMessage, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousMessages);
+      }
+      
       toast({
         title: "Message Failed",
         description: error.message || "Failed to send message",
@@ -99,7 +138,11 @@ export default function Chat() {
     }
   };
 
-  const formatMessage = (content: string) => {
+  const formatMessage = (content: string | null | undefined) => {
+    if (!content) {
+      console.warn("Message content is empty:", content);
+      return "No content";
+    }
     return content.split('\n').map((line, index) => (
       <span key={index}>
         {line}
@@ -163,43 +206,46 @@ export default function Chat() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((msg: any, index: number) => (
-                    <div
-                      key={index}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
+                  {messages.map((msg: any, index: number) => {
+                    console.log("Rendering message:", msg);
+                    return (
                       <div
-                        className={`max-w-[85%] rounded-lg p-3 ${
-                          msg.role === 'user'
-                            ? 'bg-primary text-primary-foreground ml-12'
-                            : 'bg-muted mr-12'
-                        }`}
+                        key={msg.id || `msg-${index}`}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
-                        {msg.role === 'assistant' && (
-                          <div className="flex items-center space-x-2 mb-2">
-                            <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
-                              <Users className="w-3 h-3 text-primary" />
+                        <div
+                          className={`max-w-[85%] rounded-lg p-3 ${
+                            msg.role === 'user'
+                              ? 'bg-primary text-primary-foreground ml-12'
+                              : 'bg-muted mr-12'
+                          }`}
+                        >
+                          {msg.role === 'assistant' && (
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
+                                <Users className="w-3 h-3 text-primary" />
+                              </div>
+                              <span className="text-xs font-medium">Investment Advisory Team</span>
+                              {msg.metadata?.consensusScore && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {msg.metadata.consensusScore}% Consensus
+                                </Badge>
+                              )}
                             </div>
-                            <span className="text-xs font-medium">Investment Advisory Team</span>
-                            {msg.metadata?.consensusScore && (
-                              <Badge variant="secondary" className="text-xs">
-                                {msg.metadata.consensusScore}% Consensus
-                              </Badge>
-                            )}
+                          )}
+                          <div className="text-sm">
+                            {formatMessage(msg.content)}
                           </div>
-                        )}
-                        <div className="text-sm">
-                          {formatMessage(msg.content)}
-                        </div>
-                        <div className="text-xs opacity-70 mt-2">
-                          {new Date(msg.createdAt).toLocaleTimeString([], { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
+                          <div className="text-xs opacity-70 mt-2">
+                            {new Date(msg.createdAt).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={messagesEndRef} />
                 </div>
               )}
