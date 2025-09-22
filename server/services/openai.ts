@@ -20,6 +20,12 @@ interface ConsensusResult {
   keyDebatePoints: string[];
 }
 
+interface ConsensusChatResult {
+  response: string;
+  consensusScore: number;
+  participatingPersonas: string[];
+}
+
 export class OpenAIService {
   async analyzeStockByPersona(
     persona: InvestorPersona, 
@@ -229,6 +235,73 @@ Provide analysis in JSON format:
     } catch (error) {
       console.error("Error analyzing news impact with OpenAI:", error);
       throw new Error("Failed to analyze news impact");
+    }
+  }
+
+  async generateConsensusChat(
+    userQuestion: string,
+    portfolioContext: any[],
+    personas: InvestorPersona[]
+  ): Promise<ConsensusChatResult> {
+    const portfolioSummary = portfolioContext.length > 0 
+      ? portfolioContext.map(pos => `${pos.symbol}: ${pos.shares} shares at $${pos.avgPrice}, current return: ${pos.return}%`).join(", ")
+      : "No current positions";
+
+    const prompt = `
+You are an AI investment advisory team representing these legendary investors:
+${personas.map(p => `- ${p.name}: ${p.description} (${p.investmentStyle})`).join("\n")}
+
+The user has asked: "${userQuestion}"
+
+Current Portfolio Context: ${portfolioSummary}
+
+As a team of these investment legends, provide a consensus response that:
+1. Incorporates perspectives from multiple personas where relevant
+2. Considers the user's current portfolio positions
+3. Provides actionable advice based on the collective wisdom
+4. Shows areas of agreement and disagreement among the personas
+5. Includes a confidence score (0-100) for the consensus
+
+Respond in JSON format:
+{
+  "response": "A comprehensive response incorporating multiple investor perspectives",
+  "consensusScore": number (0-100, representing agreement level among personas),
+  "participatingPersonas": ["array", "of", "persona", "names", "that", "contributed"]
+}
+
+Make the response conversational and helpful, as if the user is getting advice from a panel of investment experts.
+`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: "You are an AI investment advisory team that responds in JSON format only."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return {
+        response: result.response || "I'm sorry, I couldn't generate a response at this time.",
+        consensusScore: Math.max(0, Math.min(100, result.consensusScore || 50)),
+        participatingPersonas: result.participatingPersonas || personas.map(p => p.name)
+      };
+    } catch (error) {
+      console.error("Error generating consensus chat response:", error);
+      // Return a fallback response instead of throwing an error
+      return {
+        response: "I apologize, but I'm having trouble connecting with the investment team right now. Please try your question again.",
+        consensusScore: 0,
+        participatingPersonas: []
+      };
     }
   }
 }
