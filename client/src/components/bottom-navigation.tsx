@@ -5,7 +5,8 @@ import {
   BarChart3, 
   MessageSquare, 
   Briefcase, 
-  Newspaper 
+  Newspaper,
+  Users
 } from "lucide-react";
 
 interface BottomNavigationProps {
@@ -24,7 +25,7 @@ export default function BottomNavigation({ currentPage }: BottomNavigationProps)
   const navItems = [
     { path: "/", icon: Home, label: "Home", testId: "nav-home" },
     { path: "/analysis", icon: BarChart3, label: "Analysis", testId: "nav-analysis" },
-    { path: "/debates", icon: MessageSquare, label: "Debates", testId: "nav-debates" },
+    { path: "/chat", icon: Users, label: "Chat", testId: "nav-chat" },
     { path: "/portfolio", icon: Briefcase, label: "Portfolio", testId: "nav-portfolio" },
     { path: "/news", icon: Newspaper, label: "News", testId: "nav-news" },
   ];

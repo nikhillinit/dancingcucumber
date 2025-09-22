@@ -10,9 +10,25 @@ import {
   type PortfolioPosition,
   type InsertPortfolioPosition,
   type NewsArticle,
-  type InsertNewsArticle
+  type InsertNewsArticle,
+  type ChatConversation,
+  type InsertChatConversation,
+  type ChatMessage,
+  type InsertChatMessage,
+  type PortfolioUpload,
+  type InsertPortfolioUpload,
+  investorPersonas,
+  stocks,
+  stockAnalyses,
+  debates,
+  portfolioPositions,
+  newsArticles,
+  chatConversations,
+  chatMessages,
+  portfolioUploads
 } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Personas
@@ -52,298 +68,292 @@ export interface IStorage {
   getNewsArticles(limit?: number): Promise<NewsArticle[]>;
   getNewsArticlesByStock(symbols: string[]): Promise<NewsArticle[]>;
   createNewsArticle(article: InsertNewsArticle): Promise<NewsArticle>;
+
+  // Chat
+  getChatConversations(): Promise<ChatConversation[]>;
+  getChatConversation(id: string): Promise<ChatConversation | undefined>;
+  createChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>;
+  getChatMessages(conversationId: string): Promise<ChatMessage[]>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+
+  // Portfolio Uploads
+  getPortfolioUploads(): Promise<PortfolioUpload[]>;
+  getPortfolioUpload(id: string): Promise<PortfolioUpload | undefined>;
+  createPortfolioUpload(upload: InsertPortfolioUpload): Promise<PortfolioUpload>;
+  updatePortfolioUpload(id: string, updates: Partial<PortfolioUpload>): Promise<PortfolioUpload | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private personas: Map<string, InvestorPersona>;
-  private stocks: Map<string, Stock>;
-  private stockAnalyses: Map<string, StockAnalysis>;
-  private debates: Map<string, Debate>;
-  private portfolioPositions: Map<string, PortfolioPosition>;
-  private newsArticles: Map<string, NewsArticle>;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.personas = new Map();
-    this.stocks = new Map();
-    this.stockAnalyses = new Map();
-    this.debates = new Map();
-    this.portfolioPositions = new Map();
-    this.newsArticles = new Map();
-
-    // Initialize with default personas
     this.initializePersonas();
   }
 
-  private initializePersonas() {
-    const defaultPersonas: InsertInvestorPersona[] = [
-      {
-        name: "Warren Buffett",
-        description: "The Oracle of Omaha, seeks wonderful companies at a fair price",
-        avatar: "warren-buffett",
-        investmentStyle: "VALUE",
-        personalityTraits: ["patient", "long-term focused", "fundamentals-driven", "moat-focused"]
-      },
-      {
-        name: "Cathie Wood",
-        description: "The queen of growth investing, believes in innovation and disruption",
-        avatar: "cathie-wood",
-        investmentStyle: "GROWTH",
-        personalityTraits: ["innovative", "disruptive", "tech-focused", "forward-thinking"]
-      },
-      {
-        name: "Peter Lynch",
-        description: "Practical investor who seeks ten-baggers in everyday businesses",
-        avatar: "peter-lynch",
-        investmentStyle: "GROWTH_AT_REASONABLE_PRICE",
-        personalityTraits: ["practical", "research-driven", "consumer-focused", "opportunistic"]
-      },
-      {
-        name: "Michael Burry",
-        description: "The Big Short contrarian who hunts for deep value",
-        avatar: "michael-burry",
-        investmentStyle: "CONTRARIAN_VALUE",
-        personalityTraits: ["contrarian", "analytical", "skeptical", "independent"]
-      },
-      {
-        name: "Bill Ackman",
-        description: "Activist investor who takes bold positions and pushes for change",
-        avatar: "bill-ackman",
-        investmentStyle: "ACTIVIST",
-        personalityTraits: ["bold", "activist", "concentrated", "change-oriented"]
-      }
-    ];
+  private async initializePersonas() {
+    try {
+      const existingPersonas = await db.select().from(investorPersonas).limit(1);
+      if (existingPersonas.length > 0) return;
 
-    defaultPersonas.forEach(persona => {
-      const id = randomUUID();
-      this.personas.set(id, { ...persona, id, avatar: persona.avatar || null });
-    });
+      const defaultPersonas: InsertInvestorPersona[] = [
+        {
+          name: "Warren Buffett",
+          description: "The Oracle of Omaha - Value investing legend focused on long-term intrinsic value",
+          avatar: "🧙‍♂️",
+          investmentStyle: "Value",
+          personalityTraits: ["patient", "analytical", "conservative", "long-term focused"]
+        },
+        {
+          name: "Cathie Wood",
+          description: "Innovation investor focused on disruptive technology and exponential growth",
+          avatar: "🚀",
+          investmentStyle: "Growth/Innovation", 
+          personalityTraits: ["visionary", "risk-taking", "tech-focused", "disruptive"]
+        },
+        {
+          name: "Peter Lynch",
+          description: "Growth at a reasonable price (GARP) investor with focus on understandable businesses",
+          avatar: "📊",
+          investmentStyle: "GARP",
+          personalityTraits: ["practical", "research-driven", "opportunistic", "retail-focused"]
+        },
+        {
+          name: "Michael Burry",
+          description: "Contrarian value investor known for contrarian bets and deep fundamental analysis",
+          avatar: "🕵️",
+          investmentStyle: "Deep Value/Contrarian",
+          personalityTraits: ["contrarian", "analytical", "skeptical", "independent"]
+        },
+        {
+          name: "Bill Ackman",
+          description: "Activist investor focused on high-conviction concentrated positions",
+          avatar: "⚡",
+          investmentStyle: "Activist/Concentrated",
+          personalityTraits: ["activist", "high-conviction", "concentrated", "outspoken"]
+        }
+      ];
+
+      await db.insert(investorPersonas).values(defaultPersonas);
+    } catch (error) {
+      console.log("Personas might already exist or database not ready:", error);
+    }
   }
 
   // Personas
   async getPersonas(): Promise<InvestorPersona[]> {
-    return Array.from(this.personas.values());
+    return await db.select().from(investorPersonas);
   }
 
   async getPersona(id: string): Promise<InvestorPersona | undefined> {
-    return this.personas.get(id);
+    const [persona] = await db.select().from(investorPersonas).where(eq(investorPersonas.id, id));
+    return persona || undefined;
   }
 
   async createPersona(persona: InsertInvestorPersona): Promise<InvestorPersona> {
-    const id = randomUUID();
-    const newPersona: InvestorPersona = { ...persona, id, avatar: persona.avatar || null };
-    this.personas.set(id, newPersona);
-    return newPersona;
+    const [created] = await db.insert(investorPersonas).values(persona).returning();
+    return created;
   }
 
   // Stocks
   async getStocks(): Promise<Stock[]> {
-    return Array.from(this.stocks.values());
+    return await db.select().from(stocks);
   }
 
   async getStock(id: string): Promise<Stock | undefined> {
-    return this.stocks.get(id);
+    const [stock] = await db.select().from(stocks).where(eq(stocks.id, id));
+    return stock || undefined;
   }
 
   async getStockBySymbol(symbol: string): Promise<Stock | undefined> {
-    return Array.from(this.stocks.values()).find(stock => stock.symbol === symbol);
+    const [stock] = await db.select().from(stocks).where(eq(stocks.symbol, symbol));
+    return stock || undefined;
   }
 
   async createStock(stock: InsertStock): Promise<Stock> {
-    const id = randomUUID();
-    const newStock: Stock = { 
-      ...stock, 
-      id,
-      currentPrice: stock.currentPrice || null,
-      priceChange: stock.priceChange || null,
-      priceChangePercent: stock.priceChangePercent || null,
-      marketData: stock.marketData || null,
-      lastUpdated: new Date()
-    };
-    this.stocks.set(id, newStock);
-    return newStock;
+    const [created] = await db.insert(stocks).values(stock).returning();
+    return created;
   }
 
   async updateStock(id: string, updates: Partial<Stock>): Promise<Stock | undefined> {
-    const stock = this.stocks.get(id);
-    if (!stock) return undefined;
-
-    const updatedStock = { 
-      ...stock, 
-      ...updates,
-      lastUpdated: new Date()
-    };
-    this.stocks.set(id, updatedStock);
-    return updatedStock;
+    const [updated] = await db.update(stocks).set(updates).where(eq(stocks.id, id)).returning();
+    return updated || undefined;
   }
 
   // Stock Analyses
   async getAnalysesByStock(stockId: string): Promise<StockAnalysis[]> {
-    return Array.from(this.stockAnalyses.values()).filter(analysis => analysis.stockId === stockId);
+    return await db.select().from(stockAnalyses).where(eq(stockAnalyses.stockId, stockId));
   }
 
   async getAnalysisByStockAndPersona(stockId: string, personaId: string): Promise<StockAnalysis | undefined> {
-    return Array.from(this.stockAnalyses.values())
-      .find(analysis => analysis.stockId === stockId && analysis.personaId === personaId);
+    const [analysis] = await db.select().from(stockAnalyses)
+      .where(sql`${stockAnalyses.stockId} = ${stockId} AND ${stockAnalyses.personaId} = ${personaId}`);
+    return analysis || undefined;
   }
 
   async createAnalysis(analysis: InsertStockAnalysis): Promise<StockAnalysis> {
-    const id = randomUUID();
-    const newAnalysis: StockAnalysis = { 
-      ...analysis, 
-      id,
-      targetPrice: analysis.targetPrice || null,
-      analysisDate: new Date()
-    };
-    this.stockAnalyses.set(id, newAnalysis);
-    return newAnalysis;
+    const [created] = await db.insert(stockAnalyses).values(analysis).returning();
+    return created;
   }
 
   async getLatestAnalyses(limit = 10): Promise<(StockAnalysis & { stock: Stock; persona: InvestorPersona })[]> {
-    const analyses = Array.from(this.stockAnalyses.values())
-      .sort((a, b) => (b.analysisDate?.getTime() || 0) - (a.analysisDate?.getTime() || 0))
-      .slice(0, limit);
+    const results = await db.select({
+      id: stockAnalyses.id,
+      stockId: stockAnalyses.stockId,
+      personaId: stockAnalyses.personaId,
+      recommendation: stockAnalyses.recommendation,
+      confidenceScore: stockAnalyses.confidenceScore,
+      reasoning: stockAnalyses.reasoning,
+      targetPrice: stockAnalyses.targetPrice,
+      analysisDate: stockAnalyses.analysisDate,
+      stock: stocks,
+      persona: investorPersonas
+    })
+    .from(stockAnalyses)
+    .leftJoin(stocks, eq(stockAnalyses.stockId, stocks.id))
+    .leftJoin(investorPersonas, eq(stockAnalyses.personaId, investorPersonas.id))
+    .orderBy(desc(stockAnalyses.analysisDate))
+    .limit(limit);
 
-    const enrichedAnalyses = analyses.map(analysis => {
-      const stock = this.stocks.get(analysis.stockId);
-      const persona = this.personas.get(analysis.personaId);
-      return {
-        ...analysis,
-        stock: stock!,
-        persona: persona!
-      };
-    }).filter(analysis => analysis.stock && analysis.persona);
-
-    return enrichedAnalyses;
+    return results.map(result => ({
+      ...result,
+      stock: result.stock!,
+      persona: result.persona!
+    }));
   }
 
   // Debates
   async getDebates(): Promise<Debate[]> {
-    return Array.from(this.debates.values());
+    return await db.select().from(debates).orderBy(desc(debates.createdAt));
   }
 
   async getDebate(id: string): Promise<Debate | undefined> {
-    return this.debates.get(id);
+    const [debate] = await db.select().from(debates).where(eq(debates.id, id));
+    return debate || undefined;
   }
 
   async getDebatesByStock(stockId: string): Promise<Debate[]> {
-    return Array.from(this.debates.values()).filter(debate => debate.stockId === stockId);
+    return await db.select().from(debates).where(eq(debates.stockId, stockId)).orderBy(desc(debates.createdAt));
   }
 
   async createDebate(debate: InsertDebate): Promise<Debate> {
-    const id = randomUUID();
-    const now = new Date();
-    const newDebate: Debate = { 
-      ...debate, 
-      id,
-      consensusScore: debate.consensusScore || null,
-      createdAt: now,
-      updatedAt: now
-    };
-    this.debates.set(id, newDebate);
-    return newDebate;
+    const [created] = await db.insert(debates).values(debate).returning();
+    return created;
   }
 
   async updateDebate(id: string, updates: Partial<Debate>): Promise<Debate | undefined> {
-    const debate = this.debates.get(id);
-    if (!debate) return undefined;
-
-    const updatedDebate = { 
-      ...debate, 
-      ...updates,
-      updatedAt: new Date()
-    };
-    this.debates.set(id, updatedDebate);
-    return updatedDebate;
+    const [updated] = await db.update(debates).set(updates).where(eq(debates.id, id)).returning();
+    return updated || undefined;
   }
 
   // Portfolio
   async getPortfolioPositions(): Promise<(PortfolioPosition & { stock: Stock })[]> {
-    const positions = Array.from(this.portfolioPositions.values());
-    const enrichedPositions = positions.map(position => {
-      const stock = this.stocks.get(position.stockId);
-      return {
-        ...position,
-        stock: stock!
-      };
-    }).filter(position => position.stock);
+    const results = await db.select({
+      id: portfolioPositions.id,
+      stockId: portfolioPositions.stockId,
+      shares: portfolioPositions.shares,
+      averagePrice: portfolioPositions.averagePrice,
+      currentValue: portfolioPositions.currentValue,
+      totalReturn: portfolioPositions.totalReturn,
+      returnPercent: portfolioPositions.returnPercent,
+      consensusScore: portfolioPositions.consensusScore,
+      addedAt: portfolioPositions.addedAt,
+      updatedAt: portfolioPositions.updatedAt,
+      stock: stocks
+    })
+    .from(portfolioPositions)
+    .leftJoin(stocks, eq(portfolioPositions.stockId, stocks.id))
+    .orderBy(desc(portfolioPositions.addedAt));
 
-    return enrichedPositions;
+    return results.map(result => ({
+      ...result,
+      stock: result.stock!
+    }));
   }
 
   async getPortfolioPosition(id: string): Promise<PortfolioPosition | undefined> {
-    return this.portfolioPositions.get(id);
+    const [position] = await db.select().from(portfolioPositions).where(eq(portfolioPositions.id, id));
+    return position || undefined;
   }
 
   async getPortfolioPositionByStock(stockId: string): Promise<PortfolioPosition | undefined> {
-    return Array.from(this.portfolioPositions.values())
-      .find(position => position.stockId === stockId);
+    const [position] = await db.select().from(portfolioPositions).where(eq(portfolioPositions.stockId, stockId));
+    return position || undefined;
   }
 
   async createPortfolioPosition(position: InsertPortfolioPosition): Promise<PortfolioPosition> {
-    const id = randomUUID();
-    const now = new Date();
-    const newPosition: PortfolioPosition = { 
-      ...position, 
-      id,
-      currentValue: position.currentValue || null,
-      totalReturn: position.totalReturn || null,
-      returnPercent: position.returnPercent || null,
-      consensusScore: position.consensusScore || null,
-      addedAt: now,
-      updatedAt: now
-    };
-    this.portfolioPositions.set(id, newPosition);
-    return newPosition;
+    const [created] = await db.insert(portfolioPositions).values(position).returning();
+    return created;
   }
 
   async updatePortfolioPosition(id: string, updates: Partial<PortfolioPosition>): Promise<PortfolioPosition | undefined> {
-    const position = this.portfolioPositions.get(id);
-    if (!position) return undefined;
-
-    const updatedPosition = { 
-      ...position, 
-      ...updates,
-      updatedAt: new Date()
-    };
-    this.portfolioPositions.set(id, updatedPosition);
-    return updatedPosition;
+    const [updated] = await db.update(portfolioPositions).set(updates).where(eq(portfolioPositions.id, id)).returning();
+    return updated || undefined;
   }
 
   async deletePortfolioPosition(id: string): Promise<boolean> {
-    return this.portfolioPositions.delete(id);
+    const result = await db.delete(portfolioPositions).where(eq(portfolioPositions.id, id));
+    return result.rowCount > 0;
   }
 
   // News
   async getNewsArticles(limit = 20): Promise<NewsArticle[]> {
-    return Array.from(this.newsArticles.values())
-      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
-      .slice(0, limit);
+    return await db.select().from(newsArticles).orderBy(desc(newsArticles.publishedAt)).limit(limit);
   }
 
   async getNewsArticlesByStock(symbols: string[]): Promise<NewsArticle[]> {
-    return Array.from(this.newsArticles.values())
-      .filter(article => 
-        article.stockSymbols?.some(symbol => 
-          symbols.includes(symbol)
-        )
-      )
-      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+    return await db.select().from(newsArticles)
+      .where(sql`${newsArticles.stockSymbols} && ${symbols}`)
+      .orderBy(desc(newsArticles.publishedAt));
   }
 
   async createNewsArticle(article: InsertNewsArticle): Promise<NewsArticle> {
-    const id = randomUUID();
-    const newArticle: NewsArticle = { 
-      ...article, 
-      id,
-      description: article.description || null,
-      imageUrl: article.imageUrl || null,
-      stockSymbols: article.stockSymbols || null,
-      sentiment: article.sentiment || null,
-      impact: article.impact || null
-    };
-    this.newsArticles.set(id, newArticle);
-    return newArticle;
+    const [created] = await db.insert(newsArticles).values(article).returning();
+    return created;
+  }
+
+  // Chat
+  async getChatConversations(): Promise<ChatConversation[]> {
+    return await db.select().from(chatConversations).orderBy(desc(chatConversations.updatedAt));
+  }
+
+  async getChatConversation(id: string): Promise<ChatConversation | undefined> {
+    const [conversation] = await db.select().from(chatConversations).where(eq(chatConversations.id, id));
+    return conversation || undefined;
+  }
+
+  async createChatConversation(conversation: InsertChatConversation): Promise<ChatConversation> {
+    const [created] = await db.insert(chatConversations).values(conversation).returning();
+    return created;
+  }
+
+  async getChatMessages(conversationId: string): Promise<ChatMessage[]> {
+    return await db.select().from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(chatMessages.createdAt);
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const [created] = await db.insert(chatMessages).values(message).returning();
+    return created;
+  }
+
+  // Portfolio Uploads
+  async getPortfolioUploads(): Promise<PortfolioUpload[]> {
+    return await db.select().from(portfolioUploads).orderBy(desc(portfolioUploads.uploadedAt));
+  }
+
+  async getPortfolioUpload(id: string): Promise<PortfolioUpload | undefined> {
+    const [upload] = await db.select().from(portfolioUploads).where(eq(portfolioUploads.id, id));
+    return upload || undefined;
+  }
+
+  async createPortfolioUpload(upload: InsertPortfolioUpload): Promise<PortfolioUpload> {
+    const [created] = await db.insert(portfolioUploads).values(upload).returning();
+    return created;
+  }
+
+  async updatePortfolioUpload(id: string, updates: Partial<PortfolioUpload>): Promise<PortfolioUpload | undefined> {
+    const [updated] = await db.update(portfolioUploads).set(updates).where(eq(portfolioUploads.id, id)).returning();
+    return updated || undefined;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

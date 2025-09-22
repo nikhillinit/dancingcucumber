@@ -77,6 +77,35 @@ export const newsArticles = pgTable("news_articles", {
   impact: text("impact"), // "HIGH", "MEDIUM", "LOW"
 });
 
+export const chatConversations = pgTable("chat_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  status: text("status").notNull().default("ACTIVE"), // "ACTIVE", "ARCHIVED"
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => chatConversations.id),
+  role: text("role").notNull(), // "user", "assistant", "system"
+  content: text("content").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(), // for storing context like portfolio data
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const portfolioUploads = pgTable("portfolio_uploads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url"), // object storage path
+  status: text("status").notNull().default("PROCESSING"), // "PROCESSING", "COMPLETED", "FAILED"
+  totalPositions: integer("total_positions"),
+  processedPositions: integer("processed_positions"),
+  errorMessage: text("error_message"),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  processedAt: timestamp("processed_at"),
+});
+
 // Insert schemas
 export const insertInvestorPersonaSchema = createInsertSchema(investorPersonas).omit({
   id: true,
@@ -108,6 +137,23 @@ export const insertNewsArticleSchema = createInsertSchema(newsArticles).omit({
   id: true,
 });
 
+export const insertChatConversationSchema = createInsertSchema(chatConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPortfolioUploadSchema = createInsertSchema(portfolioUploads).omit({
+  id: true,
+  uploadedAt: true,
+  processedAt: true,
+});
+
 // Types
 export type InvestorPersona = typeof investorPersonas.$inferSelect;
 export type InsertInvestorPersona = z.infer<typeof insertInvestorPersonaSchema>;
@@ -126,3 +172,12 @@ export type InsertPortfolioPosition = z.infer<typeof insertPortfolioPositionSche
 
 export type NewsArticle = typeof newsArticles.$inferSelect;
 export type InsertNewsArticle = z.infer<typeof insertNewsArticleSchema>;
+
+export type ChatConversation = typeof chatConversations.$inferSelect;
+export type InsertChatConversation = z.infer<typeof insertChatConversationSchema>;
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+
+export type PortfolioUpload = typeof portfolioUploads.$inferSelect;
+export type InsertPortfolioUpload = z.infer<typeof insertPortfolioUploadSchema>;

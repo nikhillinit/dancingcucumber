@@ -4,7 +4,16 @@ import { storage } from "./storage";
 import { openaiService } from "./services/openai";
 import { financialDataService } from "./services/financial-data";
 import { newsService } from "./services/news";
-import { insertStockSchema, insertStockAnalysisSchema, insertDebateSchema, insertPortfolioPositionSchema } from "@shared/schema";
+import { 
+  insertStockSchema, 
+  insertStockAnalysisSchema, 
+  insertDebateSchema, 
+  insertPortfolioPositionSchema,
+  insertChatConversationSchema,
+  insertChatMessageSchema,
+  insertPortfolioUploadSchema
+} from "@shared/schema";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Personas endpoints
@@ -364,6 +373,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(articles);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch stock news" });
+    }
+  });
+
+  // Chat endpoints
+  app.get("/api/chat/conversations", async (req, res) => {
+    try {
+      const conversations = await storage.getChatConversations();
+      res.json(conversations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.post("/api/chat/conversations", async (req, res) => {
+    try {
+      const validation = insertChatConversationSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: "Invalid conversation data" });
+      }
+
+      const conversation = await storage.createChatConversation(validation.data);
+      res.json(conversation);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create conversation" });
+    }
+  });
+
+  app.get("/api/chat/conversations/:id/messages", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const messages = await storage.getChatMessages(id);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  app.post("/api/chat/conversations/:id/messages", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const messageData = { ...req.body, conversationId: id };
+      
+      const validation = insertChatMessageSchema.safeParse(messageData);
+      if (!validation.success) {
+        return res.status(400).json({ message: "Invalid message data" });
+      }
+
+      // Save user message
+      const userMessage = await storage.createChatMessage(validation.data);
+
+      // Generate AI consensus response
+      if (validation.data.role === "user") {
+        try {
+          // Get current portfolio for context
+          const portfolio = await storage.getPortfolioPositions();
+          const portfolioContext = portfolio.map(pos => ({
+            symbol: pos.stock.symbol,
+            name: pos.stock.name,
+            shares: pos.shares,
+            avgPrice: pos.averagePrice,
+            currentValue: pos.currentValue,
+            return: pos.returnPercent
+          }));
+
+          // Get AI personas for consensus response
+          const personas = await storage.getPersonas();
+          
+          const aiResponse = await openaiService.generateConsensusChat(
+            validation.data.content,
+            portfolioContext,
+            personas
+          );
+
+          // Save AI response
+          const aiMessage = await storage.createChatMessage({
+            conversationId: id,
+            role: "assistant",
+            content: aiResponse.response,
+            metadata: { consensusScore: aiResponse.consensusScore, personas: personas.map(p => p.name) }
+          });
+
+          res.json({ userMessage, aiMessage });
+        } catch (aiError) {
+          console.error("AI response failed:", aiError);
+          // Return just user message if AI fails
+          res.json({ userMessage, aiMessage: null });
+        }
+      } else {
+        res.json({ userMessage });
+      }
+    } catch (error) {
+      console.error("Chat message error:", error);
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // Portfolio upload endpoints
+  app.post("/api/portfolio/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
+  app.post("/api/portfolio/process-upload", async (req, res) => {
+    try {
+      const { fileName, fileUrl } = req.body;
+      
+      if (!fileName || !fileUrl) {
+        return res.status(400).json({ message: "fileName and fileUrl are required" });
+      }
+
+      // Create portfolio upload record
+      const upload = await storage.createPortfolioUpload({
+        fileName,
+        fileUrl,
+        status: "PROCESSING"
+      });
+
+      // TODO: Process CSV/Excel file and extract positions
+      // For now, return the upload record
+      res.json(upload);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to process upload" });
+    }
+  });
+
+  // Object storage endpoint for serving uploaded files
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error accessing object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
     }
   });
 

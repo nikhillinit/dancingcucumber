@@ -9,6 +9,7 @@ import Analysis from "@/pages/analysis";
 import Debates from "@/pages/debates";
 import Portfolio from "@/pages/portfolio";
 import News from "@/pages/news";
+import Chat from "@/pages/chat";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/debates" component={Debates} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/news" component={News} />
+      <Route path="/chat" component={Chat} />
       <Route component={NotFound} />
     </Switch>
   );
