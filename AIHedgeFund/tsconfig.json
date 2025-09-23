@@ -1,0 +1,27 @@
+{
+  "include": ["apps/**/*", "packages/**/*", "client/src/**/*", "shared/**/*", "server/**/*"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": false,
+    "module": "commonjs",
+    "target": "ES2022",
+    "strict": true,
+    "lib": ["ES2022", "dom", "dom.iterable"],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./client/src/*"],
+      "@shared/*": ["./packages/shared/*"]
+    },
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true
+  }
+}
