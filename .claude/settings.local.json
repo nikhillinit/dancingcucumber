@@ -12,7 +12,17 @@
       "Bash(git remote add:*)",
       "Bash(git remote set-url:*)",
       "Bash(git fetch:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(python test:*)",
+      "Bash(python test_simple_backtest.py:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(start https://fred.stlouisfed.org/docs/api/api_key.html)",
+      "Bash(start:*)",
+      "Bash(git clone:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

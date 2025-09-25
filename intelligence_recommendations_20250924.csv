@@ -1,0 +1,5 @@
+Symbol,Action,Position_Size_Percent,Confidence,Expected_Alpha_Percent,Time_Horizon,Stop_Loss_Percent,Take_Profit_Percent,Reasoning,Risk_Factors,Timestamp
+AAPL,HOLD,2.0347170634391145,0.5490609076104509,1.0,SHORT,0.21764086385843237,0.0054906090761045094,"Options Flow: 1 signal(s), 5.5% expected alpha",Moderate confidence - consider smaller position; Single source signal - higher uncertainty,2025-09-24T18:25:07.940073
+GOOGL,HOLD,2.0,0.659824194082653,1.0,SHORT,0.20102637088760203,0.006598241940826531,"Options Flow: 1 signal(s), 5.5% expected alpha",Single source signal - higher uncertainty,2025-09-24T18:25:07.940082
+TSLA,HOLD,2.9564801073058495,0.7039440638430702,1.0,SHORT,0.19440839042353944,0.007039440638430702,"Options Flow: 1 signal(s), 5.5% expected alpha",Single source signal - higher uncertainty,2025-09-24T18:25:07.940086
+JPM,HOLD,2.550467081091374,0.5853162157175655,1.0,SHORT,0.21220256764236517,0.005853162157175656,"Options Flow: 1 signal(s), 5.5% expected alpha",Moderate confidence - consider smaller position; Single source signal - higher uncertainty,2025-09-24T18:25:07.940088
