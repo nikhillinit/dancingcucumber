@@ -1,0 +1,309 @@
+{
+  "timestamp": "2025-09-25T07:28:17.848001",
+  "portfolio_value": 89863.06999999999,
+  "personas": {
+    "quant": {
+      "signals": {
+        "NVDA": 0.92,
+        "SMH": 0.88,
+        "MSFT": 0.78,
+        "VUG": 0.75,
+        "AMD": 0.72
+      },
+      "recommendations": [
+        {
+          "symbol": "NVDA",
+          "action": "BUY",
+          "reason": "Strong momentum (0.92), RSI 68",
+          "confidence": 0.85
+        },
+        {
+          "symbol": "MSFT",
+          "action": "BUY",
+          "reason": "Strong momentum (0.78), RSI 58",
+          "confidence": 0.85
+        },
+        {
+          "symbol": "VNQ",
+          "action": "SELL",
+          "reason": "Weak momentum (0.32), bearish MACD",
+          "confidence": 0.75
+        },
+        {
+          "symbol": "BA",
+          "action": "SELL",
+          "reason": "Weak momentum (0.35), bearish MACD",
+          "confidence": 0.75
+        },
+        {
+          "symbol": "FSLR",
+          "action": "SELL",
+          "reason": "Weak momentum (0.38), bearish MACD",
+          "confidence": 0.75
+        }
+      ],
+      "confidence": {
+        "NVDA": 0.85,
+        "SMH": 0.85,
+        "MSFT": 0.7,
+        "VUG": 0.7,
+        "AMD": 0.7
+      }
+    },
+    "insider": {
+      "signals": {
+        "NVDA": 0.95,
+        "PLTR": 0.92,
+        "MSFT": 0.85,
+        "LMT": 0.82,
+        "RTX": 0.8,
+        "AAPL": 0.78
+      },
+      "recommendations": [
+        {
+          "symbol": "NVDA",
+          "action": "ADD",
+          "reason": "Congressional accumulation, underweight position",
+          "confidence": 0.85
+        },
+        {
+          "symbol": "PLTR",
+          "action": "BUY",
+          "reason": "Congress buying: Multiple members ($500K+)",
+          "confidence": 0.9
+        },
+        {
+          "symbol": "LMT",
+          "action": "BUY",
+          "reason": "Congress buying: Armed Services Committee members",
+          "confidence": 0.9
+        },
+        {
+          "symbol": "AAPL",
+          "action": "ADD",
+          "reason": "Congressional accumulation, underweight position",
+          "confidence": 0.85
+        }
+      ],
+      "confidence": {
+        "NVDA": 0.9,
+        "PLTR": 0.8,
+        "MSFT": 0.9,
+        "LMT": 0.8,
+        "RTX": 0.8,
+        "AAPL": 0.8
+      }
+    },
+    "macro": {
+      "signals": {
+        "VUG": 0.85,
+        "SMH": 0.88,
+        "VEA": 0.45,
+        "VHT": 0.72,
+        "MSFT": 0.85,
+        "AMD": 0.88,
+        "BA": 0.78,
+        "NVDA": 0.88,
+        "AAPL": 0.85,
+        "VNQ": 0.35
+      },
+      "recommendations": [
+        {
+          "symbol": "MSFT",
+          "action": "BUY",
+          "reason": "Strong sector (Technology), macro tailwinds",
+          "confidence": 0.8
+        },
+        {
+          "symbol": "AMD",
+          "action": "BUY",
+          "reason": "Strong sector (Semiconductors), macro tailwinds",
+          "confidence": 0.8
+        },
+        {
+          "symbol": "BA",
+          "action": "BUY",
+          "reason": "Strong sector (Defense), macro tailwinds",
+          "confidence": 0.8
+        },
+        {
+          "symbol": "NVDA",
+          "action": "BUY",
+          "reason": "Strong sector (Semiconductors), macro tailwinds",
+          "confidence": 0.8
+        },
+        {
+          "symbol": "AAPL",
+          "action": "BUY",
+          "reason": "Strong sector (Technology), macro tailwinds",
+          "confidence": 0.8
+        },
+        {
+          "symbol": "VNQ",
+          "action": "REDUCE",
+          "reason": "Weak sector (REITs), macro headwinds",
+          "confidence": 0.75
+        }
+      ],
+      "confidence": {
+        "VUG": 0.8,
+        "SMH": 0.8,
+        "VEA": 0.8,
+        "VHT": 0.8,
+        "MSFT": 0.8,
+        "AMD": 0.8,
+        "BA": 0.8,
+        "NVDA": 0.8,
+        "AAPL": 0.8,
+        "VNQ": 0.8
+      }
+    }
+  },
+  "consensus": {
+    "VEA": {
+      "score": 0.485,
+      "confidence": 0.9988888888888889,
+      "quant": 0.5,
+      "insider": 0.5,
+      "macro": 0.45,
+      "agreement": "Strong"
+    },
+    "BA": {
+      "score": 0.584,
+      "confidence": 0.9651555555555555,
+      "quant": 0.5,
+      "insider": 0.5,
+      "macro": 0.78,
+      "agreement": "Strong"
+    },
+    "SMH": {
+      "score": 0.728,
+      "confidence": 0.9358222222222222,
+      "quant": 0.88,
+      "insider": 0.5,
+      "macro": 0.88,
+      "agreement": "Strong"
+    },
+    "PLTR": {
+      "score": 0.668,
+      "confidence": 0.9216,
+      "quant": 0.5,
+      "insider": 0.92,
+      "macro": 0.5,
+      "agreement": "Strong"
+    },
+    "VHT": {
+      "score": 0.566,
+      "confidence": 0.9784888888888889,
+      "quant": 0.5,
+      "insider": 0.5,
+      "macro": 0.72,
+      "agreement": "Strong"
+    },
+    "NVDA": {
+      "score": 0.92,
+      "confidence": 0.9983555555555556,
+      "quant": 0.92,
+      "insider": 0.95,
+      "macro": 0.88,
+      "agreement": "Strong"
+    },
+    "RTX": {
+      "score": 0.6200000000000001,
+      "confidence": 0.96,
+      "quant": 0.5,
+      "insider": 0.8,
+      "macro": 0.5,
+      "agreement": "Strong"
+    },
+    "AAPL": {
+      "score": 0.7170000000000001,
+      "confidence": 0.9542666666666667,
+      "quant": 0.5,
+      "insider": 0.78,
+      "macro": 0.85,
+      "agreement": "Strong"
+    },
+    "MSFT": {
+      "score": 0.8290000000000001,
+      "confidence": 0.9978222222222223,
+      "quant": 0.78,
+      "insider": 0.85,
+      "macro": 0.85,
+      "agreement": "Strong"
+    },
+    "LMT": {
+      "score": 0.628,
+      "confidence": 0.9544888888888889,
+      "quant": 0.5,
+      "insider": 0.82,
+      "macro": 0.5,
+      "agreement": "Strong"
+    },
+    "AMD": {
+      "score": 0.68,
+      "confidence": 0.9514666666666667,
+      "quant": 0.72,
+      "insider": 0.5,
+      "macro": 0.88,
+      "agreement": "Strong"
+    },
+    "VUG": {
+      "score": 0.6799999999999999,
+      "confidence": 0.9566666666666667,
+      "quant": 0.75,
+      "insider": 0.5,
+      "macro": 0.85,
+      "agreement": "Strong"
+    },
+    "VNQ": {
+      "score": 0.45499999999999996,
+      "confidence": 0.99,
+      "quant": 0.5,
+      "insider": 0.5,
+      "macro": 0.35,
+      "agreement": "Strong"
+    }
+  },
+  "recommendations": [
+    {
+      "action": "BUY",
+      "symbol": "NVDA",
+      "amount": 3000,
+      "consensus_score": 0.92,
+      "confidence": 0.9983555555555556,
+      "agreement": "Strong",
+      "reasons": [
+        "Quant: 0.92",
+        "Insider: 0.95",
+        "Macro: 0.88"
+      ]
+    },
+    {
+      "action": "BUY",
+      "symbol": "MSFT",
+      "amount": 1534.0341999999991,
+      "consensus_score": 0.8290000000000001,
+      "confidence": 0.9978222222222223,
+      "agreement": "Strong",
+      "reasons": [
+        "Quant: 0.78",
+        "Insider: 0.85",
+        "Macro: 0.85"
+      ]
+    },
+    {
+      "action": "BUY",
+      "symbol": "AAPL",
+      "amount": 3000,
+      "consensus_score": 0.7170000000000001,
+      "confidence": 0.9542666666666667,
+      "agreement": "Strong",
+      "reasons": [
+        "Quant: 0.50",
+        "Insider: 0.78",
+        "Macro: 0.85"
+      ]
+    }
+  ]
+}

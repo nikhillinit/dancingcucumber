@@ -1,0 +1,321 @@
+{
+  "timestamp": "2025-09-25T07:41:14.587520",
+  "events": {
+    "timestamp": "2025-09-25T07:41:14.586693",
+    "market_events": {
+      "fed_meeting": {
+        "date": "2024-12-17",
+        "event": "FOMC Meeting",
+        "expected": "Rate pause, dovish tone",
+        "impact": "Positive for tech/growth",
+        "affected_stocks": [
+          "VUG",
+          "NVDA",
+          "MSFT",
+          "AAPL"
+        ]
+      },
+      "inflation_data": {
+        "date": "2024-12-11",
+        "event": "CPI Release",
+        "expected": "2.7% YoY",
+        "impact": "If lower, bullish for stocks",
+        "affected_stocks": [
+          "VTI",
+          "VUG",
+          "SMH"
+        ]
+      },
+      "earnings": {
+        "this_week": [
+          "AVGO",
+          "COST",
+          "ORCL"
+        ],
+        "impact": {
+          "AVGO": "AI chip demand indicator for NVDA/SMH",
+          "COST": "Consumer strength indicator",
+          "ORCL": "Enterprise cloud demand"
+        }
+      },
+      "geopolitical": {
+        "china_tensions": "Ongoing chip restrictions",
+        "ukraine_war": "Defense spending boost",
+        "israel_conflict": "Energy price risk"
+      },
+      "market_catalysts": {
+        "ai_boom": "Microsoft/OpenAI developments",
+        "tesla_fsd": "V13 release imminent",
+        "apple_ai": "iOS 18.2 with AI features"
+      }
+    },
+    "economic_data": {
+      "vix": {
+        "current": 13.2,
+        "trend": "low",
+        "signal": "Risk-on environment"
+      },
+      "yields": {
+        "10year": 4.15,
+        "2year": 4.25,
+        "curve": "Slightly inverted",
+        "signal": "Rate cuts expected 2025"
+      },
+      "dollar": {
+        "dxy": 106.5,
+        "trend": "Strong",
+        "signal": "Headwind for international"
+      },
+      "unemployment": {
+        "rate": 4.2,
+        "trend": "Rising slightly",
+        "signal": "Fed may ease"
+      },
+      "gdp": {
+        "latest": 2.8,
+        "forecast": 2.5,
+        "signal": "Soft landing"
+      }
+    },
+    "news_sentiment": {
+      "nvda": {
+        "sentiment": 0.85,
+        "headlines": [
+          "NVIDIA powers new Microsoft AI supercomputer",
+          "Blackwell chips exceed demand expectations",
+          "China restrictions priced in"
+        ],
+        "signal": "Very bullish"
+      },
+      "msft": {
+        "sentiment": 0.78,
+        "headlines": [
+          "Copilot adoption accelerating",
+          "Azure AI revenue surging",
+          "Gaming division strong"
+        ],
+        "signal": "Bullish"
+      },
+      "aapl": {
+        "sentiment": 0.72,
+        "headlines": [
+          "iPhone 16 sales solid",
+          "Apple Intelligence rollout",
+          "China concerns persist"
+        ],
+        "signal": "Moderately bullish"
+      },
+      "tsla": {
+        "sentiment": 0.65,
+        "headlines": [
+          "FSD V13 testing positive",
+          "Cybertruck production ramping",
+          "Musk distractions ongoing"
+        ],
+        "signal": "Mixed"
+      },
+      "market_overall": {
+        "sentiment": 0.7,
+        "themes": [
+          "Santa rally expected",
+          "Fed pivot anticipation",
+          "AI investment cycle continuing"
+        ]
+      }
+    },
+    "social_sentiment": {
+      "trending_tickers": {
+        "NVDA": {
+          "mentions": 15420,
+          "sentiment": 0.82,
+          "trend": "increasing"
+        },
+        "PLTR": {
+          "mentions": 12350,
+          "sentiment": 0.75,
+          "trend": "increasing"
+        },
+        "TSLA": {
+          "mentions": 10230,
+          "sentiment": 0.6,
+          "trend": "stable"
+        },
+        "SMCI": {
+          "mentions": 8760,
+          "sentiment": 0.45,
+          "trend": "decreasing"
+        },
+        "ARM": {
+          "mentions": 7650,
+          "sentiment": 0.78,
+          "trend": "increasing"
+        }
+      },
+      "wsb_sentiment": {
+        "bullish": [
+          "NVDA",
+          "PLTR",
+          "ARM",
+          "AVGO"
+        ],
+        "bearish": [
+          "SMCI",
+          "INTC",
+          "NKLA"
+        ],
+        "meme_risk": "Low currently"
+      },
+      "retail_flows": {
+        "buying": [
+          "NVDA",
+          "MSFT",
+          "AAPL",
+          "PLTR"
+        ],
+        "selling": [
+          "F",
+          "BAC",
+          "T"
+        ],
+        "signal": "Retail bullish on tech"
+      }
+    },
+    "event_impacts": {
+      "low_volatility": {
+        "signal": "Deploy cash aggressively",
+        "best_positions": [
+          "NVDA",
+          "MSFT",
+          "SMH"
+        ],
+        "avoid": [
+          "VNQ",
+          "BIZD"
+        ],
+        "confidence": 0.85
+      },
+      "ai_momentum": {
+        "signal": "Overweight AI beneficiaries",
+        "best_positions": [
+          "NVDA",
+          "MSFT",
+          "PLTR",
+          "SMH",
+          "AVGO"
+        ],
+        "catalyst": "Ongoing AI infrastructure buildout",
+        "confidence": 0.9
+      },
+      "geopolitical": {
+        "china_risk": {
+          "affected": [
+            "NVDA",
+            "AMD",
+            "AAPL"
+          ],
+          "mitigation": "Already priced in",
+          "alternative_plays": [
+            "MSFT",
+            "PLTR"
+          ]
+        },
+        "defense_boost": {
+          "beneficiaries": [
+            "LMT",
+            "RTX",
+            "PLTR"
+          ],
+          "catalyst": "Ukraine/Middle East conflicts"
+        }
+      },
+      "rate_environment": {
+        "signal": "Growth/Tech favorable",
+        "best_positions": [
+          "VUG",
+          "SMH",
+          "NVDA"
+        ],
+        "worst_positions": [
+          "VNQ",
+          "BIZD"
+        ],
+        "confidence": 0.8
+      }
+    }
+  },
+  "recommendations": [
+    {
+      "symbol": "NVDA",
+      "action": "STRONG BUY",
+      "amount": 5000,
+      "reasons": [
+        "AI infrastructure supercycle",
+        "Microsoft partnership expanding",
+        "Low VIX window for entry",
+        "Congress buying (Pelosi)",
+        "Blackwell demand exceeding supply"
+      ],
+      "event_score": 0.95
+    },
+    {
+      "symbol": "PLTR",
+      "action": "BUY (New Position)",
+      "amount": 3000,
+      "reasons": [
+        "Defense spending increasing",
+        "Retail + institutional accumulation",
+        "Congressional buying detected",
+        "AI/Defense intersection play"
+      ],
+      "event_score": 0.88
+    },
+    {
+      "symbol": "MSFT",
+      "action": "BUY",
+      "amount": 3000,
+      "reasons": [
+        "Copilot adoption accelerating",
+        "Azure AI revenue surge",
+        "Low rate environment favorable",
+        "Congressional accumulation"
+      ],
+      "event_score": 0.85
+    },
+    {
+      "symbol": "VNQ",
+      "action": "SELL",
+      "amount": 136.59,
+      "reasons": [
+        "Rates still elevated",
+        "Better opportunities in tech",
+        "Weak technical setup"
+      ],
+      "event_score": 0.25
+    }
+  ],
+  "portfolio": {
+    "SPAXX": 19615.61,
+    "VTI": 27132.19,
+    "VUG": 12563.24,
+    "SMH": 10205.19,
+    "VEA": 4985.3,
+    "VHT": 4346.25,
+    "MSFT": 3857.75,
+    "AMD": 1591.9,
+    "BA": 1558.82,
+    "NVDA": 1441.59,
+    "BIZD": 463.08,
+    "SRE": 290.64,
+    "FLNC": 278.4,
+    "TSLA": 258.14,
+    "FSLR": 220.26,
+    "HASI": 216.59,
+    "AAPL": 214.21,
+    "CSWC": 174.83,
+    "REMX": 140.7,
+    "VNQ": 136.59,
+    "ICOP": 116.7,
+    "IIPR": 41.25,
+    "BIOX": 13.84
+  }
+}
