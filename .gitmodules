@@ -1,0 +1,3 @@
+[submodule "stefan-jansen-ml"]
+	path = stefan-jansen-ml
+	url = https://github.com/stefan-jansen/machine-learning-for-trading.git
