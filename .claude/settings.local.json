@@ -25,7 +25,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(git rm:*)",
       "Bash(git reset:*)",
-      "Bash(dir paper_trades.csv tracking.csv today_signals.json)"
+      "Bash(dir paper_trades.csv tracking.csv today_signals.json)",
+      "Bash(git rev-parse:*)"
     ],
     "deny": [],
     "ask": []
