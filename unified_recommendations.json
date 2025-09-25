@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-09-25T07:24:41.314342",
+  "portfolio_value": 89863.06999999999,
+  "recommendations": [
+    {
+      "action": "BUY",
+      "symbol": "NVDA",
+      "amount": 3000,
+      "reason": "Congress buying heavily (Pelosi $1-5M)"
+    },
+    {
+      "action": "BUY",
+      "symbol": "MSFT",
+      "amount": 2500,
+      "reason": "Congress buying + AI momentum"
+    },
+    {
+      "action": "BUY",
+      "symbol": "PLTR",
+      "amount": 2000,
+      "reason": "Multiple Congress buyers - NEW POSITION"
+    },
+    {
+      "action": "BUY",
+      "symbol": "SMH",
+      "amount": 2000,
+      "reason": "Semiconductor strength"
+    },
+    {
+      "action": "BUY",
+      "symbol": "AAPL",
+      "amount": 1500,
+      "reason": "Congress buying (Tuberville)"
+    },
+    {
+      "action": "BUY",
+      "symbol": "VUG",
+      "amount": 1500,
+      "reason": "Growth momentum"
+    },
+    {
+      "action": "SELL",
+      "symbol": "BA",
+      "amount": 779.41,
+      "reason": "Weak signal"
+    },
+    {
+      "action": "SELL",
+      "symbol": "VNQ",
+      "amount": 68.295,
+      "reason": "Weak signal"
+    },
+    {
+      "action": "SELL",
+      "symbol": "FSLR",
+      "amount": 110.13,
+      "reason": "Weak signal"
+    },
+    {
+      "action": "SELL",
+      "symbol": "REMX",
+      "amount": 70.35,
+      "reason": "Weak signal"
+    }
+  ],
+  "congressional_signals": {
+    "NVDA": {
+      "score": 0.95,
+      "buyers": [
+        "Pelosi",
+        "Crenshaw"
+      ],
+      "amount": "1-5M"
+    },
+    "MSFT": {
+      "score": 0.85,
+      "buyers": [
+        "Crenshaw"
+      ],
+      "amount": "15-50K"
+    },
+    "AAPL": {
+      "score": 0.8,
+      "buyers": [
+        "Tuberville"
+      ],
+      "amount": "50-100K"
+    },
+    "PLTR": {
+      "score": 0.88,
+      "buyers": [
+        "Multiple"
+      ],
+      "amount": "100-500K"
+    },
+    "LMT": {
+      "score": 0.75,
+      "buyers": [
+        "Green"
+      ],
+      "amount": "15-50K"
+    }
+  },
+  "combined_signals": {
+    "NVDA": 0.896,
+    "MSFT": 0.8140000000000001,
+    "AAPL": 0.764,
+    "SMH": 0.495,
+    "VUG": 0.375,
+    "AMD": 0.366,
+    "VTI": 0.345,
+    "TSLA": 0.32399999999999995,
+    "VEA": 0.3,
+    "VHT": 0.3
+  }
+}

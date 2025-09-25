@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-09-25T07:44:39.731793",
+  "current_allocation": {
+    "total_index": 60103.08,
+    "total_stocks": 10144.38,
+    "index_percent": 66.88295870595118,
+    "stocks_percent": 11.288708476129292,
+    "cash_percent": 21.82833281791953
+  },
+  "recommendations": {
+    "core": {},
+    "satellite": {},
+    "reduce": {},
+    "actions": [
+      {
+        "symbol": "VUG",
+        "action": "ADD",
+        "amount": 916.2204999999994,
+        "reason": "Growth tilt for returns"
+      },
+      {
+        "symbol": "SMH",
+        "action": "TRIM",
+        "amount": 1218.8830000000016,
+        "reason": "AI/Tech concentration"
+      },
+      {
+        "symbol": "VEA",
+        "action": "REDUCE",
+        "amount": 2289.4079000000006,
+        "reason": "Reduce international"
+      },
+      {
+        "symbol": "QQQ",
+        "action": "BUY NEW",
+        "amount": 4493.153499999999,
+        "reason": "Add pure tech exposure"
+      },
+      {
+        "symbol": "SCHD",
+        "action": "BUY NEW",
+        "amount": 2695.8920999999996,
+        "reason": "Add dividend growth"
+      },
+      {
+        "symbol": "VNQ",
+        "action": "SELL",
+        "amount": 136.59,
+        "reason": "Rate sensitive, weak sector"
+      },
+      {
+        "symbol": "REMX",
+        "action": "SELL",
+        "amount": 140.7,
+        "reason": "Too small, China exposure"
+      },
+      {
+        "symbol": "ICOP",
+        "action": "SELL",
+        "amount": 116.7,
+        "reason": "Too small, commodity weakness"
+      },
+      {
+        "symbol": "BIOX",
+        "action": "SELL",
+        "amount": 13.84,
+        "reason": "Tiny position, no edge"
+      },
+      {
+        "symbol": "BIZD",
+        "action": "SELL",
+        "amount": 463.08,
+        "reason": "Better income options available"
+      }
+    ]
+  },
+  "balanced_plan": {
+    "actions": [
+      {
+        "type": "index",
+        "symbol": "VTI",
+        "amount": 2000
+      },
+      {
+        "type": "index",
+        "symbol": "QQQ",
+        "amount": 3000
+      },
+      {
+        "type": "index",
+        "symbol": "SCHD",
+        "amount": 2000
+      },
+      {
+        "type": "index",
+        "symbol": "VUG",
+        "amount": 1000
+      },
+      {
+        "type": "stock",
+        "symbol": "NVDA",
+        "amount": 2000
+      },
+      {
+        "type": "stock",
+        "symbol": "MSFT",
+        "amount": 1500
+      },
+      {
+        "type": "stock",
+        "symbol": "PLTR",
+        "amount": 1500
+      }
+    ]
+  }
+}

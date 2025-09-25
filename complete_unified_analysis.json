@@ -1,0 +1,401 @@
+{
+  "timestamp": "2025-09-25T07:37:49.327745",
+  "portfolio": {
+    "SPAXX": 19615.61,
+    "VTI": 27132.19,
+    "VUG": 12563.24,
+    "SMH": 10205.19,
+    "VEA": 4985.3,
+    "VHT": 4346.25,
+    "MSFT": 3857.75,
+    "AMD": 1591.9,
+    "BA": 1558.82,
+    "NVDA": 1441.59,
+    "BIZD": 463.08,
+    "SRE": 290.64,
+    "FLNC": 278.4,
+    "TSLA": 258.14,
+    "FSLR": 220.26,
+    "HASI": 216.59,
+    "AAPL": 214.21,
+    "CSWC": 174.83,
+    "REMX": 140.7,
+    "VNQ": 136.59,
+    "ICOP": 116.7,
+    "IIPR": 41.25,
+    "BIOX": 13.84
+  },
+  "all_signals": {
+    "backtested": {
+      "NVDA": {
+        "score": 0.94,
+        "prediction": "strong_buy",
+        "confidence": 0.92
+      },
+      "MSFT": {
+        "score": 0.88,
+        "prediction": "buy",
+        "confidence": 0.9
+      },
+      "SMH": {
+        "score": 0.91,
+        "prediction": "strong_buy",
+        "confidence": 0.91
+      },
+      "AAPL": {
+        "score": 0.82,
+        "prediction": "buy",
+        "confidence": 0.88
+      },
+      "VUG": {
+        "score": 0.79,
+        "prediction": "buy",
+        "confidence": 0.85
+      },
+      "AMD": {
+        "score": 0.76,
+        "prediction": "hold",
+        "confidence": 0.82
+      },
+      "PLTR": {
+        "score": 0.85,
+        "prediction": "buy",
+        "confidence": 0.87
+      },
+      "VTI": {
+        "score": 0.72,
+        "prediction": "hold",
+        "confidence": 0.8
+      },
+      "BA": {
+        "score": 0.38,
+        "prediction": "sell",
+        "confidence": 0.85
+      },
+      "VNQ": {
+        "score": 0.35,
+        "prediction": "sell",
+        "confidence": 0.88
+      },
+      "FSLR": {
+        "score": 0.42,
+        "prediction": "sell",
+        "confidence": 0.82
+      }
+    },
+    "congressional": {
+      "NVDA": {
+        "buyers": [
+          "Pelosi ($1-5M)",
+          "Crenshaw"
+        ],
+        "score": 0.95
+      },
+      "PLTR": {
+        "buyers": [
+          "Multiple members"
+        ],
+        "score": 0.92
+      },
+      "MSFT": {
+        "buyers": [
+          "Crenshaw",
+          "Green"
+        ],
+        "score": 0.85
+      },
+      "AAPL": {
+        "buyers": [
+          "Tuberville"
+        ],
+        "score": 0.78
+      },
+      "LMT": {
+        "buyers": [
+          "Armed Services Committee"
+        ],
+        "score": 0.82
+      },
+      "META": {
+        "sellers": [
+          "Gottheimer"
+        ],
+        "score": 0.35
+      }
+    },
+    "external": {
+      "NVDA": {
+        "options": "bullish_flow",
+        "insider": "buying",
+        "score": 0.9
+      },
+      "MSFT": {
+        "options": "call_skew",
+        "insider": "holding",
+        "score": 0.82
+      },
+      "TSLA": {
+        "options": "high_iv",
+        "insider": "selling",
+        "score": 0.48
+      },
+      "PLTR": {
+        "options": "accumulation",
+        "insider": "buying",
+        "score": 0.88
+      },
+      "AMD": {
+        "options": "neutral",
+        "sec": "10-Q positive",
+        "score": 0.72
+      }
+    },
+    "ml": {
+      "NVDA": {
+        "ml_score": 0.91,
+        "features": {
+          "rsi": 68,
+          "bb_signal": 1,
+          "volume_ratio": 1.8
+        }
+      },
+      "SMH": {
+        "ml_score": 0.89,
+        "features": {
+          "rsi": 71,
+          "bb_signal": 1,
+          "volume_ratio": 1.5
+        }
+      },
+      "MSFT": {
+        "ml_score": 0.84,
+        "features": {
+          "rsi": 58,
+          "bb_signal": 0,
+          "volume_ratio": 1.2
+        }
+      },
+      "VUG": {
+        "ml_score": 0.78,
+        "features": {
+          "rsi": 62,
+          "bb_signal": 0,
+          "volume_ratio": 1.1
+        }
+      },
+      "BA": {
+        "ml_score": 0.32,
+        "features": {
+          "rsi": 38,
+          "bb_signal": -1,
+          "volume_ratio": 0.8
+        }
+      }
+    },
+    "rl": {
+      "NVDA": {
+        "action": "buy",
+        "q_value": 0.88,
+        "position_size": 0.15
+      },
+      "SMH": {
+        "action": "buy",
+        "q_value": 0.82,
+        "position_size": 0.12
+      },
+      "MSFT": {
+        "action": "buy",
+        "q_value": 0.79,
+        "position_size": 0.1
+      },
+      "VNQ": {
+        "action": "sell",
+        "q_value": 0.25,
+        "position_size": -0.05
+      },
+      "BA": {
+        "action": "sell",
+        "q_value": 0.3,
+        "position_size": -0.03
+      }
+    },
+    "technical": {
+      "NVDA": {
+        "trend": "up",
+        "momentum": 0.92,
+        "support": 120,
+        "resistance": 150
+      },
+      "SMH": {
+        "trend": "up",
+        "momentum": 0.88,
+        "support": 250,
+        "resistance": 280
+      },
+      "MSFT": {
+        "trend": "up",
+        "momentum": 0.78,
+        "support": 400,
+        "resistance": 440
+      },
+      "BA": {
+        "trend": "down",
+        "momentum": 0.35,
+        "support": 150,
+        "resistance": 180
+      },
+      "VNQ": {
+        "trend": "down",
+        "momentum": 0.32,
+        "support": 70,
+        "resistance": 85
+      }
+    },
+    "macro": {
+      "sectors": {
+        "semiconductors": 0.88,
+        "technology": 0.85,
+        "defense": 0.78,
+        "healthcare": 0.72,
+        "reits": 0.35,
+        "international": 0.45
+      },
+      "macro_factors": {
+        "vix": 18.5,
+        "fed_policy": "pause",
+        "inflation": "moderating",
+        "dollar": "stable"
+      }
+    }
+  },
+  "unified_signals": {
+    "AAPL": {
+      "score": 0.8028571428571429,
+      "num_systems": 2,
+      "confidence": 0.7999999999999999
+    },
+    "VTI": {
+      "score": 0.7199999999999999,
+      "num_systems": 1,
+      "confidence": 0.75
+    },
+    "VUG": {
+      "score": 0.7857142857142858,
+      "num_systems": 2,
+      "confidence": 0.7999999999999999
+    },
+    "LMT": {
+      "score": 0.82,
+      "num_systems": 1,
+      "confidence": 0.75
+    },
+    "VNQ": {
+      "score": 0.3175,
+      "num_systems": 3,
+      "confidence": 0.85
+    },
+    "FSLR": {
+      "score": 0.42,
+      "num_systems": 1,
+      "confidence": 0.75
+    },
+    "MSFT": {
+      "score": 0.8347058823529412,
+      "num_systems": 6,
+      "confidence": 0.95
+    },
+    "NVDA": {
+      "score": 0.92,
+      "num_systems": 6,
+      "confidence": 0.95
+    },
+    "SMH": {
+      "score": 0.8827272727272729,
+      "num_systems": 4,
+      "confidence": 0.8999999999999999
+    },
+    "TSLA": {
+      "score": 0.48,
+      "num_systems": 1,
+      "confidence": 0.75
+    },
+    "AMD": {
+      "score": 0.7428571428571429,
+      "num_systems": 2,
+      "confidence": 0.7999999999999999
+    },
+    "META": {
+      "score": 0.35,
+      "num_systems": 1,
+      "confidence": 0.75
+    },
+    "PLTR": {
+      "score": 0.8800000000000001,
+      "num_systems": 3,
+      "confidence": 0.85
+    },
+    "BA": {
+      "score": 0.34363636363636374,
+      "num_systems": 4,
+      "confidence": 0.8999999999999999
+    }
+  },
+  "validation": {
+    "mintrl": 3.2,
+    "pbo": 0.24,
+    "effective_breadth": 12.5,
+    "deflated_sharpe": 1.85,
+    "confidence_interval": [
+      0.18,
+      0.42
+    ],
+    "validation_status": "PASSED"
+  },
+  "recommendations": [
+    {
+      "action": "ADD",
+      "symbol": "NVDA",
+      "amount": 5000,
+      "score": 0.92,
+      "systems_agree": 6,
+      "confidence": 0.95
+    },
+    {
+      "action": "ADD",
+      "symbol": "SMH",
+      "amount": 3274.2704999999987,
+      "score": 0.8827272727272729,
+      "systems_agree": 4,
+      "confidence": 0.8999999999999999
+    },
+    {
+      "action": "ADD",
+      "symbol": "MSFT",
+      "amount": 5000,
+      "score": 0.8347058823529412,
+      "systems_agree": 6,
+      "confidence": 0.95
+    },
+    {
+      "action": "SELL",
+      "symbol": "FSLR",
+      "amount": 110.13,
+      "score": 0.42,
+      "reason": "Weak signal across multiple systems"
+    },
+    {
+      "action": "SELL",
+      "symbol": "BA",
+      "amount": 779.41,
+      "score": 0.34363636363636374,
+      "reason": "Weak signal across multiple systems"
+    },
+    {
+      "action": "SELL",
+      "symbol": "VNQ",
+      "amount": 68.295,
+      "score": 0.3175,
+      "reason": "Weak signal across multiple systems"
+    }
+  ]
+}

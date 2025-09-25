@@ -22,7 +22,10 @@
       "Bash(git clone:*)",
       "Bash(cat:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Bash(dir paper_trades.csv tracking.csv today_signals.json)"
     ],
     "deny": [],
     "ask": []

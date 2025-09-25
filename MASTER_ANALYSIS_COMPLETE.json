@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-09-25T08:15:35.128668",
+  "systems_count": 25,
+  "recommendations": {
+    "individual_stocks": [
+      {
+        "symbol": "NVDA",
+        "amount": 1558.41,
+        "score": 0.9266666666666666
+      }
+    ],
+    "index_funds": [],
+    "reduce_positions": [
+      {
+        "symbol": "FSLR",
+        "amount": 110.13,
+        "score": 0.3499999999999999
+      },
+      {
+        "symbol": "BA",
+        "amount": 779.41,
+        "score": 0.32555555555555554
+      },
+      {
+        "symbol": "VNQ",
+        "amount": 68.295,
+        "score": 0.265
+      }
+    ],
+    "new_positions": []
+  },
+  "validation": "COMPLETE"
+}

@@ -1,0 +1,49 @@
+{
+  "timestamp": "2025-09-25T08:53:38.891675",
+  "vix": 12.8,
+  "signals": {
+    "NVDA": {
+      "prev": 0.93,
+      "current": 0.94,
+      "change": "+0.01",
+      "news": "Blackwell shipping ahead of schedule"
+    },
+    "PLTR": {
+      "prev": 0.88,
+      "current": 0.91,
+      "change": "+0.03",
+      "news": "New Army contract rumored"
+    },
+    "MSFT": {
+      "prev": 0.83,
+      "current": 0.84,
+      "change": "+0.01",
+      "news": "Copilot seats accelerating"
+    },
+    "QQQ": {
+      "prev": 0.82,
+      "current": 0.83,
+      "change": "+0.01",
+      "news": "Tech sector leading"
+    },
+    "BA": {
+      "prev": 0.33,
+      "current": 0.31,
+      "change": "-0.02",
+      "news": "More production issues"
+    },
+    "VNQ": {
+      "prev": 0.27,
+      "current": 0.25,
+      "change": "-0.02",
+      "news": "REITs weak on rate fears"
+    }
+  },
+  "congressional": [
+    "UPDATE: Josh Gottheimer bought $250K MSFT (12/26)",
+    "UPDATE: Tommy Tuberville added to AAPL position",
+    "CONFIRMED: Pelosi's NVDA buy was CALL OPTIONS (bullish)",
+    "NEW: Mark Green bought PLTR $50-100K"
+  ],
+  "recommendation": "UNCHANGED - BUY NOW"
+}
