@@ -27,7 +27,10 @@
       "Bash(git reset:*)",
       "Bash(dir paper_trades.csv tracking.csv today_signals.json)",
       "Bash(git rev-parse:*)",
-      "Bash(git submodule add:*)"
+      "Bash(git submodule add:*)",
+      "mcp__ide__executeCode",
+      "Bash(curl:*)",
+      "WebFetch(domain:mcp.alphavantage.co)"
     ],
     "deny": [],
     "ask": []
