@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "defaults": { "research": "claude", "production": "codex", "distribution": "claude" },
+  "ownership": {
+    "research": {
+      "owner": "claude", "reviewer": "kimi", "role": "leader-coordinator",
+      "artifact": "implementation brief", "gate": "npm run doctor:quick"
+    },
+    "production": {
+      "owner": "codex", "reviewer": "claude", "role": "worker-executor",
+      "artifact": "diff plus tests", "gate": "npm run check"
+    },
+    "production-financial": {
+      "owner": "codex", "reviewer": "claude", "audit": "kimi", "role": "worker-executor",
+      "specialistRequired": true, "artifact": "diff plus backtest-disclosure notes",
+      "gate": "npm run advisor-gate", "humanApproval": true
+    },
+    "distribution": {
+      "owner": "claude", "repairOwner": "codex", "role": "release-manager",
+      "artifact": "PR-ready summary", "gate": "npm run lint"
+    }
+  },
+  "debate": { "comparators": ["claude", "codex", "kimi"], "synthesis": "claude" },
+  "longContextModel": "kimi",
+  "longContextTriggers": ["full repo audit", "repo-wide", "system-wide", "architecture scan", "cross-module trace"],
+  "manualFlags": { "--claude": "claude", "--codex": "codex", "--kimi": "kimi", "--gemini": "gemini", "--agy": "agy" },
+  "specialists": {
+    "backtest-integrity": {
+      "keywords": [
+        { "phrase": "backtest", "weight": 4 },
+        { "phrase": "walk-forward", "weight": 4 },
+        { "phrase": "look-ahead", "weight": 4 },
+        { "phrase": "survivorship", "weight": 4 },
+        { "phrase": "point-in-time", "weight": 3 },
+        { "phrase": "purged cv", "weight": 3 },
+        { "phrase": "sharpe", "weight": 3 }
+      ],
+      "risk": "financial"
+    },
+    "risk-sizing": {
+      "keywords": [
+        { "phrase": "position sizing", "weight": 4 },
+        { "phrase": "position limit", "weight": 4 },
+        { "phrase": "risk limit", "weight": 4 },
+        { "phrase": "kill switch", "weight": 4 },
+        { "phrase": "drawdown", "weight": 3 },
+        { "phrase": "volatility-adjusted", "weight": 3 },
+        { "phrase": "correlation-adjusted", "weight": 3 }
+      ],
+      "risk": "financial"
+    },
+    "valuation-math": {
+      "keywords": [
+        { "phrase": "dcf", "weight": 4 },
+        { "phrase": "intrinsic value", "weight": 4 },
+        { "phrase": "owner earnings", "weight": 4 },
+        { "phrase": "discount rate", "weight": 3 },
+        { "phrase": "residual income", "weight": 3 },
+        { "phrase": "ev/ebitda", "weight": 3 }
+      ],
+      "risk": "financial"
+    },
+    "signal-quality": {
+      "keywords": [
+        { "phrase": "signal family", "weight": 4 },
+        { "phrase": "ensemble", "weight": 3 },
+        { "phrase": "calibration", "weight": 3 },
+        { "phrase": "skill-weight", "weight": 3 },
+        { "phrase": "information coefficient", "weight": 3 }
+      ],
+      "risk": "operational"
+    },
+    "test-repair": {
+      "keywords": [
+        { "phrase": "failing test", "weight": 4 },
+        { "phrase": "flaky test", "weight": 4 },
+        { "phrase": "pytest failure", "weight": 3 },
+        { "phrase": "test regression", "weight": 3 }
+      ],
+      "risk": "quality"
+    },
+    "code-reviewer": {
+      "keywords": [
+        { "phrase": "code review", "weight": 4 },
+        { "phrase": "risk scan", "weight": 3 },
+        { "phrase": "maintainability check", "weight": 3 }
+      ],
+      "risk": "quality"
+    }
+  },
+  "scoring": {
+    "minScoreToAssign": 3,
+    "tieBreaker": "highest-risk-wins",
+    "riskOrder": ["financial", "operational", "quality"]
+  },
+  "gates": {
+    "research": "npm run doctor:quick",
+    "production": "npm run check",
+    "production-financial": "npm run advisor-gate",
+    "distribution": "npm run lint"
+  },
+  "commands": {
+    "claude": { "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
+    "codex": { "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "danger-full-access"] },
+    "kimi": { "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"] },
+    "gemini": { "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="] },
+    "agy": { "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
+  }
+}
