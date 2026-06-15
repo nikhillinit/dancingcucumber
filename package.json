@@ -14,7 +14,18 @@
     "db:up": "docker-compose -f infra/docker-compose.yml up -d",
     "db:down": "docker-compose -f infra/docker-compose.yml down",
     "db:migrate": "ts-node scripts/migrate.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "hermes": "node orchestrate.mjs",
+    "hermes:dry": "node orchestrate.mjs --dry-run",
+    "hermes:route": "node orchestrate.mjs --json",
+    "hermes:research": "node orchestrate.mjs --phase research",
+    "hermes:production": "node orchestrate.mjs --phase production",
+    "hermes:distribution": "node orchestrate.mjs --phase distribution",
+    "hermes:doctor": "node orchestrate.mjs doctor",
+    "doctor:quick": "node orchestrate.mjs doctor",
+    "check": "node tools/run-pytest.mjs apps/quant/advisor/tests",
+    "lint": "node tools/run-pytest.mjs apps/quant/advisor/tests",
+    "advisor-gate": "node tools/run-pytest.mjs apps/quant/advisor/tests && node tools/run-floor.mjs"
   },
   "dependencies": {
     "bottleneck": "^2.19.5",
