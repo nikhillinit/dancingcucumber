@@ -273,10 +273,14 @@ function createWorkflowPlan({
   }
 
   if ((selected === 'chain' || (selected === 'pair' && risk === 'financial')) && specialist) {
+    // Specialists are roles, not models. Run the specialist review on a real
+    // configured model (reviewer > audit > owner) and carry the specialist's
+    // identity in the action so it adopts that persona.
+    const specialistName = specialist.name || specialist;
     steps.push({
       role: 'specialist',
-      model: specialist.name || specialist,
-      action: 'review financial risk before completion',
+      model: ownership?.reviewer || ownership?.audit || ownerModel,
+      action: `as the ${specialistName} specialist, review financial risk before completion`,
     });
   }
 
