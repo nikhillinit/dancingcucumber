@@ -144,7 +144,7 @@ Adapts Updog's `model-routing.json` to advisor-domain specialists. Financial-ris
       "artifact": "diff plus tests", "gate": "npm run check"
     },
     "production-financial": {
-      "owner": "codex", "reviewer": "claude", "audit": "kimi", "role": "worker-executor",
+      "owner": "codex", "reviewer": "claude", "role": "worker-executor",
       "specialistRequired": true, "artifact": "diff plus backtest-disclosure notes",
       "gate": "npm run advisor-gate", "humanApproval": true
     },
