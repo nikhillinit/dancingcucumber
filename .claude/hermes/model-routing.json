@@ -101,7 +101,7 @@
   },
   "commands": {
     "claude": { "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
-    "codex": { "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "danger-full-access"] },
+    "codex": { "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "workspace-write"] },
     "kimi": { "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"] },
     "gemini": { "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="] },
     "agy": { "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
