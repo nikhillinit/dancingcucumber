@@ -25,3 +25,24 @@ def test_pipeline_produces_bounded_decision():
     # bounded by risk: vol 0.10 -> 25% of 100k = 25k -> <=250 shares at price 100
     assert decision.quantity <= 250
     assert decision.bundle_direction in {d.value for d in Direction}
+
+
+def test_pipeline_applies_persona_veto():
+    from advisor.analysis.momentum import evaluate
+    from advisor.personas.overlay import PersonaVerdict
+
+    prices = pd.Series(np.linspace(100, 200, 200))
+
+    async def momentum_family(as_of):
+        return evaluate(prices, as_of)
+
+    decision = asyncio.run(run_pipeline(
+        ticker="AAPL", as_of=date(2024, 5, 1), price=100.0,
+        net_liq=100_000.0, vol=0.10, correlation=0.5,
+        family_coros=[momentum_family],
+        persona_critic=lambda d: PersonaVerdict(0.0, "forensic red flag"),
+    ))
+
+    assert decision.action == "hold"
+    assert decision.quantity == 0
+    assert "forensic red flag" in decision.reasoning

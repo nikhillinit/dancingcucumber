@@ -23,11 +23,16 @@ class Decision:
 
 async def run_pipeline(ticker: str, as_of: date, price: float, net_liq: float,
                        vol: float, correlation: float,
-                       family_coros: list[FamilyCoro]) -> Decision:
+                       family_coros: list[FamilyCoro],
+                       persona_critic=None) -> Decision:
     signals = await asyncio.gather(*(coro(as_of) for coro in family_coros))
     bundle = SignalBundle(ticker=ticker, as_of=as_of, signals=list(signals))
     direction, _ = ensemble_vote(bundle)
     limit = position_limit(net_liq, vol=vol, correlation=correlation)
     alloc = allocate(bundle, price=price, position_limit_dollars=limit)
-    return Decision(ticker=ticker, action=alloc.action, quantity=alloc.quantity,
-                    bundle_direction=direction.value, reasoning=alloc.reasoning)
+    decision = Decision(ticker=ticker, action=alloc.action, quantity=alloc.quantity,
+                        bundle_direction=direction.value, reasoning=alloc.reasoning)
+    if persona_critic is not None:
+        from advisor.personas.overlay import apply_overlay  # lazy: avoids circular import
+        decision = apply_overlay(decision, persona_critic)
+    return decision
