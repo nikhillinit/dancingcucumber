@@ -6,20 +6,16 @@ Coordinates all ML models for optimal trading decisions
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-# Import all ML components
-from .finrl_trading_agent import FinRLTradingAgent, MultiAgentTradingSystem
-from .qlib_factor_generator import QlibIntegration
+# Import supported ML components
 from .finbert_sentiment_analyzer import SentimentEnhancedPersona
 from .informer_predictor import InformerIntegration
-from .autogluon_ensemble import AutoGluonIntegration
-from .neural_price_predictor import PredictionResult
 
 logger = logging.getLogger(__name__)
 
@@ -40,23 +36,17 @@ class MLOrchestrator:
     """Orchestrates all ML models for trading decisions"""
 
     def __init__(self):
-        # Initialize all ML components
-        self.finrl = MultiAgentTradingSystem([])
-        self.qlib = QlibIntegration()
+        # Initialize supported ML components
         self.sentiment = SentimentEnhancedPersona()
         self.informer = InformerIntegration()
-        self.autogluon = AutoGluonIntegration()
 
         # Model weights for ensemble
         self.model_weights = {
-            'finrl': 0.25,
-            'qlib': 0.20,
-            'sentiment': 0.15,
-            'informer': 0.20,
-            'autogluon': 0.20
+            'sentiment': 0.50,
+            'informer': 0.50
         }
 
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.executor = ThreadPoolExecutor(max_workers=2)
 
     async def generate_comprehensive_signals(
         self,
@@ -95,22 +85,6 @@ class MLOrchestrator:
         # Run models in parallel
         loop = asyncio.get_event_loop()
 
-        # FinRL signal
-        finrl_future = loop.run_in_executor(
-            self.executor,
-            self._get_finrl_signal,
-            symbol,
-            timeframe
-        )
-
-        # Qlib signal
-        qlib_future = loop.run_in_executor(
-            self.executor,
-            self._get_qlib_signal,
-            symbol,
-            timeframe
-        )
-
         # Sentiment signal
         sentiment_future = loop.run_in_executor(
             self.executor,
@@ -127,100 +101,16 @@ class MLOrchestrator:
             timeframe
         )
 
-        # AutoGluon signal
-        autogluon_future = loop.run_in_executor(
-            self.executor,
-            self._get_autogluon_signal,
-            symbol,
-            timeframe
-        )
-
         # Collect all signals
-        finrl_signal = await finrl_future
-        qlib_signal = await qlib_future
         sentiment_signal = await sentiment_future
         informer_signal = await informer_future
-        autogluon_signal = await autogluon_future
 
         signals.extend([
-            finrl_signal,
-            qlib_signal,
             sentiment_signal,
-            informer_signal,
-            autogluon_signal
+            informer_signal
         ])
 
         return [s for s in signals if s is not None]
-
-    def _get_finrl_signal(self, symbol: str, timeframe: str) -> Optional[MLSignal]:
-        """Get signal from FinRL agent"""
-
-        try:
-            # Initialize FinRL agent for symbol
-            if symbol not in self.finrl.agents:
-                self.finrl.symbols = [symbol]
-                self.finrl.create_specialized_agents()
-
-            # Get market regime
-            # This would use real data in production
-            regime = 'bull'  # Placeholder
-
-            agent = self.finrl.agents[regime]
-
-            # Generate prediction (simplified)
-            action_value = np.random.random()  # Placeholder for real prediction
-
-            if action_value > 0.6:
-                action = 'buy'
-            elif action_value < 0.4:
-                action = 'sell'
-            else:
-                action = 'hold'
-
-            return MLSignal(
-                symbol=symbol,
-                action=action,
-                confidence=abs(action_value - 0.5) * 2,
-                model_source='finrl',
-                reasoning=f"RL agent suggests {action} in {regime} market",
-                timestamp=datetime.now(),
-                metadata={'regime': regime, 'algorithm': 'PPO'}
-            )
-
-        except Exception as e:
-            logger.error(f"FinRL signal generation failed: {e}")
-            return None
-
-    def _get_qlib_signal(self, symbol: str, timeframe: str) -> Optional[MLSignal]:
-        """Get signal from Qlib models"""
-
-        try:
-            # Generate Qlib factors and predictions
-            factors = self.qlib.generate_signals([symbol], model_type='ensemble')
-
-            # Simplified signal generation
-            prediction = np.random.random()  # Placeholder
-
-            if prediction > 0.55:
-                action = 'buy'
-            elif prediction < 0.45:
-                action = 'sell'
-            else:
-                action = 'hold'
-
-            return MLSignal(
-                symbol=symbol,
-                action=action,
-                confidence=abs(prediction - 0.5) * 2,
-                model_source='qlib',
-                reasoning="Qlib ensemble predicts positive alpha",
-                timestamp=datetime.now(),
-                metadata={'factor_count': len(factors.columns)}
-            )
-
-        except Exception as e:
-            logger.error(f"Qlib signal generation failed: {e}")
-            return None
 
     def _get_sentiment_signal(self, symbol: str, timeframe: str) -> Optional[MLSignal]:
         """Get signal from sentiment analysis"""
@@ -277,33 +167,6 @@ class MLOrchestrator:
 
         except Exception as e:
             logger.error(f"Informer signal generation failed: {e}")
-            return None
-
-    def _get_autogluon_signal(self, symbol: str, timeframe: str) -> Optional[MLSignal]:
-        """Get signal from AutoGluon ensemble"""
-
-        try:
-            # Generate AutoGluon predictions
-            # This would use real data in production
-            ag_signal = {
-                'action': np.random.choice(['buy', 'sell', 'hold']),
-                'confidence': np.random.random() * 0.5 + 0.5,
-                'expected_return': np.random.randn() * 0.02,
-                'reasoning': "AutoGluon ensemble prediction"
-            }
-
-            return MLSignal(
-                symbol=symbol,
-                action=ag_signal['action'],
-                confidence=ag_signal['confidence'],
-                model_source='autogluon',
-                reasoning=ag_signal['reasoning'],
-                timestamp=datetime.now(),
-                metadata={'expected_return': ag_signal['expected_return']}
-            )
-
-        except Exception as e:
-            logger.error(f"AutoGluon signal generation failed: {e}")
             return None
 
     def _ensemble_signals(self, signals: List[MLSignal]) -> MLSignal:
@@ -403,32 +266,20 @@ class AdaptiveModelSelector:
 
         regime_weights = {
             'bull': {
-                'finrl': 0.30,
-                'qlib': 0.25,
-                'sentiment': 0.10,
-                'informer': 0.20,
-                'autogluon': 0.15
+                'sentiment': 0.35,
+                'informer': 0.65
             },
             'bear': {
-                'finrl': 0.20,
-                'qlib': 0.15,
-                'sentiment': 0.25,
-                'informer': 0.20,
-                'autogluon': 0.20
+                'sentiment': 0.55,
+                'informer': 0.45
             },
             'high_volatility': {
-                'finrl': 0.35,
-                'qlib': 0.15,
-                'sentiment': 0.15,
-                'informer': 0.15,
-                'autogluon': 0.20
+                'sentiment': 0.50,
+                'informer': 0.50
             },
             'sideways': {
-                'finrl': 0.15,
-                'qlib': 0.30,
-                'sentiment': 0.15,
-                'informer': 0.20,
-                'autogluon': 0.20
+                'sentiment': 0.45,
+                'informer': 0.55
             }
         }
 
