@@ -604,17 +604,20 @@ function executeModelCapture(
 const APPROVAL_SENTINEL = 'APPROVED';
 const REJECTION_SENTINEL = 'CHANGES REQUESTED';
 
-// Fail-closed, line-anchored. Approval requires a line that is EXACTLY the
-// approval sentinel; any line beginning with the rejection sentinel wins, and an
-// absent or ambiguous response is treated as not approved.
+// Fail-closed but format-tolerant. Each line is normalized to letters-only
+// uppercase so markdown/punctuation around the verdict still parses
+// (**APPROVED**, "APPROVED.", "## APPROVED"). Rejection wins; an absent or
+// ambiguous response is treated as not approved.
 function parseApprovalSignal(output) {
-  const lines = String(output || '')
+  const rejectToken = REJECTION_SENTINEL.replace(/[^a-zA-Z]/g, '').toUpperCase();
+  const approveToken = APPROVAL_SENTINEL.replace(/[^a-zA-Z]/g, '').toUpperCase();
+  const norm = String(output || '')
     .split('\n')
-    .map((line) => line.trim());
-  if (lines.some((line) => line.startsWith(REJECTION_SENTINEL))) {
+    .map((line) => line.replace(/[^a-zA-Z]/g, '').toUpperCase());
+  if (norm.some((line) => line.startsWith(rejectToken))) {
     return false;
   }
-  return lines.some((line) => line === APPROVAL_SENTINEL);
+  return norm.some((line) => line === approveToken);
 }
 
 function formatStepInput(input) {
@@ -653,9 +656,13 @@ function createLiveRunStep({
     if (step.role === 'reviewer') {
       sections.push(
         '',
-        `Reply with exactly "${APPROVAL_SENTINEL}" on its own line if the artifact is ready to ship.`,
-        `Otherwise emit a line beginning "${REJECTION_SENTINEL}" followed by the required changes.`,
-        'An absent or ambiguous response is treated as changes requested.'
+        'VERDICT REQUIRED. The LAST line of your reply must be exactly one of these two',
+        'tokens, alone on its own line, with no markdown, quotes, or other characters:',
+        `  ${APPROVAL_SENTINEL}`,
+        `  ${REJECTION_SENTINEL}`,
+        `Use ${APPROVAL_SENTINEL} only if the diff is correct and ready to ship. Otherwise use`,
+        `${REJECTION_SENTINEL} and list the required changes on the lines above the verdict.`,
+        'An absent or ambiguous verdict is treated as changes requested.'
       );
     }
 
