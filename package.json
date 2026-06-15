@@ -25,7 +25,8 @@
     "doctor:quick": "node orchestrate.mjs doctor",
     "check": "node tools/run-pytest.mjs apps/quant/advisor/tests",
     "lint": "node tools/run-pytest.mjs apps/quant/advisor/tests",
-    "advisor-gate": "node tools/run-pytest.mjs apps/quant/advisor/tests && node tools/run-floor.mjs"
+    "advisor-gate": "node tools/run-pytest.mjs apps/quant/advisor/tests && node tools/run-floor.mjs",
+    "advisor-release-gate": "node tools/run-pytest.mjs apps/quant/advisor/tests && node tools/run-floor.mjs --enforce"
   },
   "dependencies": {
     "bottleneck": "^2.19.5",

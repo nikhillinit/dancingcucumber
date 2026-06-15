@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// advisor-gate stage 2: import-smoke the floor module so the gate fails if the
-// floor logic is broken. Runs a .py FILE (not `python -c "..."`) so spaces in
-// the command can't be mistokenized by the Windows shell under shell:true.
-// Full data-driven floor enforcement lands when live price history is wired in
-// the next advisor plan.
+// advisor-gate stage 2: data-driven floor. Backtests the deployed long-flat price-only
+// ensemble vs SPY on the committed fixture and prints the real verdict every run.
+// Report mode (default) exits 0 so dev commits are not blocked; --enforce exits non-zero
+// on a floor miss (used by advisor-release-gate, gating PRODUCTION RELEASE only).
 import { spawnSync } from 'node:child_process';
 
-const result = spawnSync('python', ['tools/floor_smoke.py'], {
+const args = ['tools/floor_data_check.py'];
+if (process.argv.includes('--enforce')) args.push('--enforce');
+const r = spawnSync('python', args, {
   stdio: 'inherit',
   shell: process.platform === 'win32',
 });
-
-process.exit(result.status ?? 1);
+process.exit(r.status ?? 1);
