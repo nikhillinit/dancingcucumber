@@ -8,6 +8,9 @@ The machine verdict printed by `node tools/run-floor.mjs` is **`DEV_FAILED`**: t
 
 **Recorded:** 2026-06-16. Pre-registration: `PREREG.md` (config hash `1ad2ed4a…`, candidate order C→E, margin 0.0, IMMUTABLE). Fixture: 30 large-caps + SPY, 2015-2023 (`UNIVERSE_RULE.md`, SHA-256 `d40b9959…`), universe = **formal** (≥20).
 
+## Decision (accepted 2026-06-16) — Option 1: accept the negative
+**No new floor code; the family-reweighting lane is closed (exhausted).** The advisor may **report / dev-run** but is **NOT authorized for production capital sizing** while the release floor blocks (`node tools/run-floor.mjs --enforce` → exit 1). Future work is a **post-Workstream-C signal plan** — genuinely new information or out-of-sample orthogonalization at the live `ensemble_vote` seam (`portfolio/allocator.py`, which still ignores `skill_weight`) — **NOT this floor**. Keep the release gate blocked until a defensible floor clears.
+
 ## Evidence (dev folds only — holdout blinded)
 | Candidate | dev.passed | ensemble book-Sharpe | best standalone family | all 4 fold Δ |
 |---|---|---|---|---|
