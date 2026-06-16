@@ -7,8 +7,9 @@ import pandas as pd
 from advisor.backtest.stats import book_sharpe
 from advisor.backtest.validation import (
     deflated_sharpe, effective_n_pca, minbtl_exceeded, n_for_dsr, per_obs_sharpe,
-    psr, sharpe_moments, tstat_meets_hurdle, var_sr_trials,
+    psr, sharpe_moments, tstat_meets_hurdle, validation_report, var_sr_trials,
 )
+from advisor.backtest.validation_prereg import DEFAULT_VALIDATION
 
 _GAMMA = 0.5772156649015329
 
@@ -158,3 +159,39 @@ def test_tstat_hurdle():
     assert tstat_meets_hurdle(3.0, hurdle=3.0) is True
     assert tstat_meets_hurdle(2.9, hurdle=3.0) is False
     assert tstat_meets_hurdle(None, hurdle=3.0) is False   # no claim -> not met
+
+
+def test_validation_report_shape_and_deflation():
+    cand = _r(0.0012, sd=0.01, n=1250, seed=7)
+    fams = {"ensemble": cand, "best_family": _r(0.0002, seed=8)}
+    rep = validation_report(cand, fams, DEFAULT_VALIDATION)
+    for k in ("per_obs_sharpe", "T", "skew", "kurt", "declared_N", "effective_N",
+              "n_used", "var_sr", "dsr", "dsr_pass_bar", "dsr_passes", "tstat_met",
+              "minbtl_exceeded", "passes"):
+        assert k in rep
+    assert rep["n_used"] == 45                 # declared dominates effective-N
+    assert rep["dsr_pass_bar"] == 0.95
+    # tstat is None here -> no-op; passes = dsr_passes and not over-budget
+    assert rep["passes"] == (rep["dsr_passes"] and not rep["minbtl_exceeded"])
+
+
+def test_minbtl_checks_actual_n_used_not_declared():
+    # n_used (here = declared) above the budget must flag minbtl_exceeded.
+    from advisor.backtest.validation_prereg import ValidationPreReg
+    over = ValidationPreReg(declared_trials_N=50, minbtl_max_trials=45)
+    cand = _r(0.0012, sd=0.01, n=1250, seed=7)
+    fams = {"ensemble": cand, "best_family": _r(0.0002, seed=8)}
+    rep = validation_report(cand, fams, over)
+    assert rep["n_used"] == 50 and rep["minbtl_exceeded"] is True and rep["passes"] is False
+
+
+def test_tstat_claim_below_hurdle_fails_otherwise_passing_candidate():
+    # A strong (DSR-passing) candidate with a supplied weak t-stat must NOT pass;
+    # the same candidate with no t-stat claim is unaffected by the hurdle.
+    from advisor.backtest.validation_prereg import ValidationPreReg
+    lax = ValidationPreReg(declared_trials_N=2, dsr_pass=0.0)   # force dsr_passes True
+    cand = _r(0.0015, sd=0.01, n=1250, seed=9)
+    fams = {"ensemble": cand, "best_family": _r(0.0002, seed=8)}
+    assert validation_report(cand, fams, lax, tstat=None)["passes"] is True
+    assert validation_report(cand, fams, lax, tstat=2.0)["passes"] is False
+    assert validation_report(cand, fams, lax, tstat=3.5)["passes"] is True

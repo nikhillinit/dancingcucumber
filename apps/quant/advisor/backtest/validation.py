@@ -6,6 +6,8 @@ from statistics import NormalDist
 import numpy as np
 import pandas as pd
 
+from advisor.backtest.validation_prereg import ValidationPreReg
+
 _Z = NormalDist()
 _EULER_GAMMA = 0.5772156649015329
 
@@ -110,3 +112,39 @@ def minbtl_exceeded(n_trials: int, max_trials: int) -> bool:
 def tstat_meets_hurdle(tstat: float | None, hurdle: float) -> bool:
     """Harvey-Liu-Zhu selection hurdle. None (no t-stat claim) does not meet it."""
     return tstat is not None and tstat >= hurdle
+
+
+def validation_report(candidate_returns: pd.Series,
+                      family_returns: dict[str, pd.Series],
+                      vcfg: ValidationPreReg,
+                      tstat: float | None = None) -> dict:
+    """Signal-agnostic deflation diagnostics. Report-only: never mutates verdict."""
+    T, skew, kurt = sharpe_moments(candidate_returns)
+    var_sr = vcfg.declared_var_sr          # pre-registered constant (Task 9 calibrated); NOT
+                                           # estimated from 2 report-level series (would be noise)
+    eff = effective_n_pca(family_returns) if family_returns else 0.0
+    n_used = n_for_dsr(family_returns, vcfg.declared_trials_N)
+    dsr = deflated_sharpe(candidate_returns, n_trials=n_used, var_sr=var_sr,
+                          sr_benchmark=vcfg.psr_benchmark_sr)
+    over_budget = minbtl_exceeded(n_used, vcfg.minbtl_max_trials)   # ACTUAL trials, not declared
+    tstat_met = tstat_meets_hurdle(tstat, vcfg.tstat_hurdle)
+    dsr_passes = dsr >= vcfg.dsr_pass
+    return {
+        "per_obs_sharpe": per_obs_sharpe(candidate_returns),
+        "T": T, "skew": skew, "kurt": kurt,
+        "declared_N": vcfg.declared_trials_N,
+        "effective_N": eff,
+        "n_used": n_used,
+        "var_sr": var_sr,
+        "dsr": dsr,
+        "dsr_pass_bar": vcfg.dsr_pass,
+        "dsr_passes": dsr_passes,
+        "tstat": tstat,
+        "tstat_hurdle": vcfg.tstat_hurdle,
+        "tstat_met": tstat_met,
+        "minbtl_exceeded": over_budget,
+        # t-stat is a no-op when no selection claim is supplied (tstat is None),
+        # enforced only when a claim IS made -> can fail an otherwise-passing candidate.
+        "passes": dsr_passes and not over_budget and (tstat is None or tstat_met),
+        "note": "report-only deflation guard; does not unlock holdout or authorize sizing",
+    }
