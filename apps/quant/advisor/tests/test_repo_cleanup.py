@@ -20,6 +20,8 @@ RETIRED_PATHS = {
     "AIHedgeFund/apps/quant/finrl_trading_agent.py",
     "AIHedgeFund/apps/quant/qlib_factor_generator.py",
     "AIHedgeFund/apps/quant/autogluon_ensemble.py",
+    "AIHedgeFund/apps/quant/ai_debate_orchestrator.py",
+    "AIHedgeFund/apps/quant/consensus_engine.py",
     "COMPLETE_MASTER_ANALYSIS.py",
     "FINAL_RECOMMENDATIONS.py",
     "accuracy_enhancement_plan.py",
