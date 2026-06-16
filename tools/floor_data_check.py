@@ -7,6 +7,7 @@ import pandas as pd
 sys.path.insert(0, "apps/quant")
 from advisor.backtest.data_floor import floor_metrics  # noqa: E402
 from advisor.backtest.prereg import DEFAULT_CONFIG, config_hash  # noqa: E402
+from advisor.backtest.walk_forward import disclosure_header  # noqa: E402
 
 FIXTURE = Path("apps/quant/advisor/tests/fixtures/floor_prices.csv")
 
@@ -60,6 +61,7 @@ def main(argv: list[str]) -> int:
         print(f"floor: holdout unlocked with config+fixture hash {prereg_hash}", flush=True)
     m = floor_metrics(panel, DEFAULT_CONFIG, prereg_hash=prereg_hash)
     _print_verdict(m)
+    print(disclosure_header(), flush=True)  # necessary-not-sufficient + survivorship + regime caveats
     return 0 if not enforce or m["verdict"] == "PASSED" else 1
 
 
