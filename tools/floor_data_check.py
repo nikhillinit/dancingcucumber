@@ -42,6 +42,16 @@ def _print_verdict(m: dict) -> None:
             f"SPY Sharpe {m['spy']:.2f}; best family Sharpe {m['best_family']:.2f}.",
             flush=True,
         )
+    v = m.get("validation")
+    if v:
+        flag = "PASS" if v["passes"] else "FAIL"
+        print(
+            f"floor: validation (report-only) -- DSR {v['dsr']:.2f} vs bar "
+            f"{v['dsr_pass_bar']:.2f} [{flag}]; N_used {v['n_used']}; "
+            f"MinBTL_exceeded {v['minbtl_exceeded']}. This guard can only confirm "
+            f"the floor, never unlock the holdout or authorize sizing.",
+            flush=True,
+        )
 
 
 def main(argv: list[str]) -> int:
