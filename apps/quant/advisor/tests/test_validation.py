@@ -6,7 +6,8 @@ import pandas as pd
 
 from advisor.backtest.stats import book_sharpe
 from advisor.backtest.validation import (
-    deflated_sharpe, per_obs_sharpe, psr, sharpe_moments, var_sr_trials,
+    deflated_sharpe, effective_n_pca, n_for_dsr, per_obs_sharpe, psr,
+    sharpe_moments, var_sr_trials,
 )
 
 _GAMMA = 0.5772156649015329
@@ -116,3 +117,31 @@ def test_deflation_bites_at_production_var_sr():
     undeflated = psr(per_obs_sharpe(r), 0.0, T, skew, kurt)   # N=1 equivalent
     deflated = deflated_sharpe(r, n_trials=45, var_sr=v)
     assert deflated < undeflated                       # multiple-testing penalty bites at ship config
+
+
+def test_effective_n_collapses_correlated_series():
+    import numpy as np
+    rng = np.random.default_rng(0)
+    base = rng.normal(0, 0.01, 500)
+    fams = {                                   # 3 near-identical -> Neff ~ 1
+        "a": pd.Series(base + rng.normal(0, 1e-5, 500)),
+        "b": pd.Series(base + rng.normal(0, 1e-5, 500)),
+        "c": pd.Series(base + rng.normal(0, 1e-5, 500)),
+    }
+    assert effective_n_pca(fams) < 1.5
+
+
+def test_effective_n_independent_series_near_count():
+    import numpy as np
+    rng = np.random.default_rng(0)
+    fams = {k: pd.Series(rng.normal(0, 0.01, 500)) for k in ("a", "b", "c", "d")}
+    assert effective_n_pca(fams) > 3.0         # ~4 independent
+
+
+def test_n_for_dsr_never_below_declared():
+    import numpy as np
+    rng = np.random.default_rng(0)
+    base = rng.normal(0, 0.01, 500)
+    fams = {k: pd.Series(base) for k in ("a", "b")}   # Neff ~ 1
+    assert n_for_dsr(fams, declared_trials_N=45) == 45  # declared dominates
+    assert n_for_dsr(fams, declared_trials_N=0) == 1    # floors at >=1
