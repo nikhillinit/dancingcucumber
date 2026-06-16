@@ -6,8 +6,8 @@ import pandas as pd
 
 from advisor.backtest.stats import book_sharpe
 from advisor.backtest.validation import (
-    deflated_sharpe, effective_n_pca, n_for_dsr, per_obs_sharpe, psr,
-    sharpe_moments, var_sr_trials,
+    deflated_sharpe, effective_n_pca, minbtl_exceeded, n_for_dsr, per_obs_sharpe,
+    psr, sharpe_moments, tstat_meets_hurdle, var_sr_trials,
 )
 
 _GAMMA = 0.5772156649015329
@@ -145,3 +145,16 @@ def test_n_for_dsr_never_below_declared():
     fams = {k: pd.Series(base) for k in ("a", "b")}   # Neff ~ 1
     assert n_for_dsr(fams, declared_trials_N=45) == 45  # declared dominates
     assert n_for_dsr(fams, declared_trials_N=0) == 1    # floors at >=1
+
+
+def test_minbtl_exceeded_above_budget():
+    assert minbtl_exceeded(n_trials=60, max_trials=45) is True
+    assert minbtl_exceeded(n_trials=45, max_trials=45) is False
+    assert minbtl_exceeded(n_trials=10, max_trials=45) is False
+
+
+def test_tstat_hurdle():
+    assert tstat_meets_hurdle(3.5, hurdle=3.0) is True
+    assert tstat_meets_hurdle(3.0, hurdle=3.0) is True
+    assert tstat_meets_hurdle(2.9, hurdle=3.0) is False
+    assert tstat_meets_hurdle(None, hurdle=3.0) is False   # no claim -> not met
