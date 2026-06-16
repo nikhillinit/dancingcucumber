@@ -17,12 +17,12 @@ class ValidationPreReg:
                                          # = budget ceiling; conservative, can only deflate harder)
     effective_n_method: str = "pca"      # PCA participation-ratio over family return series
     effective_n_floor_is_declared: bool = True  # effective-N may never lower N below declared
-    declared_var_sr: float = 4e-4        # PRE-REGISTERED cross-trial Sharpe dispersion V[{SR_n}].
+    declared_var_sr: float = 1e-4        # PRE-REGISTERED cross-trial Sharpe dispersion V[{SR_n}].
                                          # A DECLARED CONSTANT, not estimated live (the harness has
                                          # no stored 45-trial book; 2 report-level series can't
                                          # estimate it). SR0 ∝ sqrt(var_sr) -> this is the gate's
-                                         # dominant leniency knob; HIGHER = STRICTER. Interim 4e-4
-                                         # errs high; Task 9 calibrates it from realized trial Sharpes.
+                                         # dominant leniency knob; HIGHER = STRICTER. Calibrated
+                                         # (Task 9) from the realized A-E trial Sharpes; see VALIDATION_PREREG.md.
 
 
 DEFAULT_VALIDATION = ValidationPreReg()
