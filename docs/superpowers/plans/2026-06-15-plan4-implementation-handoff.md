@@ -8,9 +8,9 @@
 ## 1. Current state (precise)
 - **Branch:** `feat/advisor-v2-calibration` (already created — **skip Task 0's `git switch`**). Created from `main`.
 - **Commits so far:**
-  - `main @ 0ac9a5e` — `.claude/` automation: the **frozen-floor guard hook** (`.claude/hooks/guard-frozen-floor.mjs` + `.claude/settings.json`) and the **`backtest-integrity-reviewer`** subagent. Inherited by the feature branch.
-  - `feat/advisor-v2-calibration @ 3654391` — Plan 4 (`docs/superpowers/plans/2026-06-15-plan4-v2-calibration.md`) + its handoff companion.
-- **Nothing pushed.** No pre-commit hook exists (verified) — commits run clean; `--no-verify` in the plan's commit steps is harmless belt-and-suspenders.
+  - `main` (pushed) — `.claude/` automation: the **frozen-floor guard hook** (`.claude/hooks/guard-frozen-floor.mjs` + `.claude/settings.json`) and the **`backtest-integrity-reviewer`** subagent (`0ac9a5e`), plus plugin enablement (`510fcce`). Inherited by the feature branch.
+  - `feat/advisor-v2-calibration` (pushed) — Plan 4 (`3654391`), its v2-calibration handoff, and this implementation handoff. HEAD advances as these docs are revised.
+- **Both branches pushed to origin** (`github.com/nikhillinit/dancingcucumber`). No pre-commit hook exists (verified) — commits run clean; `--no-verify` in the plan's commit steps is harmless belt-and-suspenders.
 - **`advisor-gate` is currently green in report mode** (exit 0) and the **enforce** gate correctly exits 1 (v1 still fails its floor). It stays that way throughout implementation until the holdout records a `PASSED` verdict (Task 14).
 - **The committed fixture is still the OLD 6-name `floor_prices.csv`.** That is fine for all Codex tasks (their tests use *synthetic* panels). Only Task 14 (the measurement run) needs the extended fixture from Task 0.
 
