@@ -30,3 +30,17 @@ def test_holdout_gates_on_both_parts_and_spy():
         assert (m["verdict"] == "PASSED") == (h["beats_parts"] and h["beats_spy"])
     else:
         assert m["holdout"] is None                       # dev fail -> no holdout
+
+
+def test_verdict_print_includes_validation_caveat(capsys):
+    from tools.floor_data_check import _print_verdict
+    m = {
+        "verdict": "DEV_FAILED", "universe": "formal",
+        "ensemble": 0.73, "spy": 0.85, "best_family": 0.83,
+        "dev": {"reasons": ["median fold delta not > 0"]},
+        "validation": {"dsr": 0.41, "dsr_pass_bar": 0.95, "passes": False,
+                       "n_used": 45, "minbtl_exceeded": False},
+    }
+    _print_verdict(m)
+    out = capsys.readouterr().out
+    assert "DSR" in out and "0.41" in out and "report-only" in out.lower()
