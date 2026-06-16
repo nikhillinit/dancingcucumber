@@ -1,0 +1,287 @@
+{
+  "summary": "Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.",
+  "agentCount": 104,
+  "logs": [
+    "Q: Identify validated, citable methodologies — from arXiv papers AND commercial/ind…",
+    "Decomposed into 5 angles: Orthogonal alpha NLP options altdata, Formulaic alphas practitioner white papers, Signal combination bet sizing, Validation rigor deflation, Critical LLM trading frameworks leakage",
+    "Validation rigor deflation: 6 results",
+    "Formulaic alphas practitioner white papers: 6 results",
+    "Critical LLM trading frameworks leakage: 6 results",
+    "Critical LLM trading frameworks leakage: 4 novel (2 filtered)",
+    "Signal combination bet sizing: 6 results",
+    "Signal combination bet sizing: 3 novel (3 filtered)",
+    "Orthogonal alpha NLP options altdata: 6 results",
+    "Orthogonal alpha NLP options altdata: 3 novel (3 filtered)",
+    "Fetched 22 sources → 103 claims → verifying top 25",
+    "\"SESTM is a supervised three-step text-mining metho…\": 3-0 ✓",
+    "\"The SESTM news-sentiment long-short strategy is al…\": 3-0 ✓",
+    "\"Out-of-sample (Feb 2004–Jul 2017), the equal-weigh…\": 3-0 ✓",
+    "\"The cross-sectional shape of the individual-stock …\": 2-1 ✓",
+    "\"Reported profits of LLM-based financial trading ag…\": 3-0 ✓",
+    "\"The signal is orthogonal to price-trend: the smirk…\": 2-1 ✓",
+    "\"Fine-tuning LLMs on financial data improves in-dis…\": 3-0 ✓",
+    "\"The mechanism is pre-training contamination, not f…\": 1-2 ✗",
+    "\"Combining value with momentum in a 60/40 long-shor…\": 3-0 ✓",
+    "\"The 101 alphas have a LOW average pairwise correla…\": 3-0 ✓",
+    "\"The paper publishes explicit formulas (also comput…\": 2-1 ✓",
+    "\"Value (HML) is spanned/redundant in the Fama-Frenc…\": 3-0 ✓",
+    "\"Value and momentum are strongly negatively correla…\": 2-1 ✓",
+    "\"QMJ's abnormal returns cannot be explained as comp…\": 2-1 ✓",
+    "\"A long high-quality / short low-quality 'Quality M…\": 2-1 ✓",
+    "\"The mined alphas are price/volume-derived formulai…\": 3-0 ✓",
+    "\"AlphaForge's dynamic, performance-conditional re-w…\": 3-0 ✓",
+    "\"LLM-guided MCTS for formulaic alpha mining produce…\": 3-0 ✓",
+    "\"The method enforces alpha diversity only via a har…\": 3-0 ✓",
+    "\"AutoAlpha is an evolutionary algorithm that automa…\": 3-0 ✓",
+    "\"Hierarchical Risk Parity (HRP) is a portfolio allo…\": 3-0 ✓",
+    "\"HRP is more robust than CLA/quadratic optimization…\": 3-0 ✓",
+    "\"AutoAlpha uses a PCA-based Quality-Diversity searc…\": 3-0 ✓",
+    "\"The 'forecast combination puzzle' is real and well…\": 2-1 ✓",
+    "\"The leading explanation for the puzzle is paramete…\": 3-0 ✓",
+    "Verify done: 25 claims → 24 confirmed, 1 killed"
+  ],
+  "result": {
+    "question": "Identify validated, citable methodologies — from arXiv papers AND commercial/industry white papers — that could advance an \"AI hedge fund\" quantitative advisor system, going beyond a prior web-only survey of GitHub repos.\n\nSYSTEM CONTEXT (self-contained): A Python advisor produces signal \"families\" (momentum, trend, mean-reversion, breakout, value/quality, macro, sentiment) and combines them via an EQUAL-WEIGHT ensemble vote into portfolio allocations. Its own pre-registered walk-forward backtest \"floor\" concluded that a fixed blend of CORRELATED LONG-ONLY PRICE families CANNOT beat its best standalone family or a SPY benchmark (\"beat the parts\" is structural). Therefore MORE recombination of existing price-derived families is a proven dead end. The system also has an UNUSED per-signal confidence field (\"skill_weight\") that the combiner currently ignores, and a rigorous validation harness (walk-forward, dev/holdout split, prereg, bootstrap). Data is price-only (yfinance); there is NO machine-learning library and NO alternative data today.\n\nTHE CENTRAL DISCRIMINATOR to apply to every methodology: does it add genuinely ORTHOGONAL INFORMATION, or does it merely RECOMBINE existing correlated price families (the dead lane)? Flag every recommendation on this axis.\n\nFor EACH of these FOUR seams, find specific validated methodologies with evidence of OUT-OF-SAMPLE efficacy, citing arXiv ids / journal papers / named commercial white papers (e.g., from AQR, Two Sigma, WorldQuant, Man AHL, Hudson & Thames, Jane Street, BlackRock):\n\n1. NEW ORTHOGONAL ALPHA — methods to extract signals demonstrably uncorrelated with price-trend: SEC-filings / news / earnings-call NLP (FinBERT, FinGPT), options-implied information, alternative data, cross-sectional formulaic alphas (WorldQuant 101 Alphas paper), fundamental factor models.\n2. SIGNAL COMBINATION / BET SIZING — meta-labeling (López de Prado), regime-conditional / Bayesian model averaging, ensemble stacking, Hierarchical Risk Parity (HRP) — with evidence they beat naive equal-weight or inverse-variance blends, and applicability to sizing a per-signal confidence weight.\n3. VALIDATION RIGOR — Combinatorial Purged Cross-Validation (CPCV), Deflated Sharpe Ratio, Probabilistic Sharpe Ratio, Probability of Backtest Overfitting (PBO), multiple-testing corrections for factor mining (Harvey-Liu-Zhu \"...and the Cross-Section of Expected Returns\").\n4. BACKTEST THROUGHPUT / ROBUSTNESS — vectorized backtesting at scale, walk-forward optimization best practices, deflation for selection bias.\n\nAlso assess LLM-for-finance research (multi-agent trading frameworks like TradingAgents, FinRobot; filings-sentiment models) CRITICALLY — explicitly note which approaches LACK rigorous out-of-sample validation or show evidence of look-ahead/data-leakage.\n\nFor each methodology report: (a) the citation/source, (b) the core technique in one line, (c) evidence of efficacy, (d) known failure modes / criticisms, (e) the orthogonal-vs-recombination verdict. Prioritize methods that are low-risk to adopt and that harden or extend infrastructure the system already has.",
+    "summary": "The strongest evidence-backed path to advance the advisor system is to add GENUINELY ORTHOGONAL information sources rather than re-blending its correlated long-only price families — a lane its own floor already proved structurally dead, and which the academic \"forecast combination puzzle\" predicts will stay dead under any reweighting scheme. Two orthogonal alpha seams clear rigorous out-of-sample validation: (1) news-text sentiment via the SESTM method (Ke-Kelly-Xiu, JFE 2021), whose long-short spread carries at most 10% R-squared on Fama-French factors and is almost pure alpha; and (2) the options volatility-smirk signal (Xing-Zhang-Zhao, JFQA 2010), which front-runs the next quarter's earnings shocks. Negatively-correlated factor pairs — timely-price value plus momentum, and Quality-Minus-Junk fundamentals (AQR) — are the rare price/fundamental signals that diversify rather than recombine, nearly doubling value-alone's Sharpe. By contrast, the entire formulaic-alpha-mining literature (WorldQuant 101, AutoAlpha, AlphaForge, LLM-MCTS) lives inside the same OHLCV information set and is RECOMBINATION, not orthogonal data — though performance-conditional dynamic combination (AlphaForge: 4.40% vs 2.43% IC) and cross-sectional dollar-neutral construction are materially different from the system's static long-only equal-weight and could add intra-price diversification. Crucially, LLM trading-agent frameworks (TradingAgents, FinMem, FinCON, etc.) fail rigorous out-of-sample tests: returns collapse ~50% and Sharpe decays 51-62% once past the model's training cutoff, evidencing look-ahead/memorization rather than skill — adopt their critique, not their architecture.",
+    "findings": [
+      {
+        "claim": "ORTHOGONAL ALPHA (adopt): SESTM is a fully-specified, citable supervised three-step news-text-mining method (predictive word screening -> topic-model sentiment weighting -> penalized-likelihood article scoring) that extracts a return-predictive sentiment score from news, with derived theoretical accuracy guarantees. It is genuinely orthogonal to the system's price-trend families: out-of-sample (Feb 2004-Jul 2017) the equal-weighted long-short spread earned a gross annualized Sharpe of 4.29 (vs 1.33 value-weighted), and the spread portfolio has at most 10% daily R-squared on Fama-French factors (legs at most 41%) with returns that are almost entirely alpha. VERDICT: orthogonal new-information source (news NLP, not price), the live lane — not recombination.",
+        "confidence": "high",
+        "vote": "3-0 x3 (claims [0],[1],[2])",
+        "sources": [
+          "https://www.nber.org/system/files/working_papers/w26186/w26186.pdf",
+          "https://www.aqr.com/Insights/Research/Working-Paper/Predicting-Returns-with-Text-Data",
+          "Journal of Financial Economics 2021 (Ke, Kelly & Xiu, 'Predicting Returns with Text Data')"
+        ],
+        "evidence": "Primary source NBER WP 26186 / JFE 2021 by top-tier authors (Harvard/Yale-AQR/Chicago Booth). Abstract verbatim confirms the three steps and 'theoretical guarantees on the accuracy of estimates.' Factor-orthogonality is the paper's own framing: 'the long-short spread portfolio R2 is at most 10%... the average return of the strategy is almost entirely alpha.' Table 2/4 confirm EW Sharpe 4.29 vs VW 1.33 over a genuine rolling-OOS window (10yr train/5yr validation/1yr OOS). CAVEAT (does not affect orthogonality, which is a covariance property): the 4.29 is GROSS of costs with ~95% daily turnover and concentrates in small/illiquid stocks, so net tradability and capacity are open — the orthogonality claim is scoped to factor loadings, not net profitability."
+      },
+      {
+        "claim": "ORTHOGONAL ALPHA (adopt, with caveats): The cross-sectional shape of the individual-stock option volatility smirk predicts future equity returns — steepest-smirk stocks underperform flattest by 10.9% per year risk-adjusted. The signal is orthogonal to price-trend by construction: it reflects informed traders with negative information preferentially trading out-of-the-money puts, anticipating the worst earnings shocks the FOLLOWING quarter, information equity markets are slow to incorporate. VERDICT: orthogonal options-implied information source, the live lane — not recombination of price families.",
+        "confidence": "medium",
+        "vote": "2-1 x2 (claims [3],[4])",
+        "sources": [
+          "https://www.cambridge.org/core/journals/journal-of-financial-and-quantitative-analysis/article/abs/what-does-the-individual-option-volatility-smirk-tell-us-about-future-equity-returns/ECFD16BA9ACBDC8D577D1BD866FBEA72",
+          "Xing, Zhang & Zhao (2010), Journal of Financial and Quantitative Analysis 45(3):641-662"
+        ],
+        "evidence": "Verbatim match to the JFQA primary source confirmed via WebFetch; top-tier peer-reviewed. Orthogonality independently corroborated by the broader options-lead-equities literature (Cremers-Weinbaum 2010 IV spread; Muravyev-Pearson-Pollet; option-implied skew predicting reversals after controlling for FF factors and momentum). CAVEATS that qualify MAGNITUDE (not orthogonality): in-sample period predates 2010; ~50% post-publication decay typical (McLean & Pontiff 2016) and ~26% OOS decay implied by predictor-zoo studies; effect concentrated in smaller/illiquid stocks with limits to arbitrage; partial subsumption by variance-asymmetry measures. Both underlying claims were 2-1 splits, hence medium. Practical barrier for this system: requires an options-data feed it does not have (price-only yfinance today)."
+      },
+      {
+        "claim": "ORTHOGONAL FACTOR PAIRS (adopt): Combining negatively-correlated factors is the rare price/fundamental case that DIVERSIFIES rather than recombines. A properly constructed timely-price value strategy is naturally negatively correlated with momentum (HML vs UMD t-stat -5.92; within-asset-class value/momentum correlation ~ -0.49 in 'Value and Momentum Everywhere'). A 60/40 value+momentum blend lifts value-alone's long-short Sharpe from 0.46 to 0.79, and an equal-weight value/momentum/profitability third reaches 0.84 (1963-2014), nearly doubling value. Although value (HML) is spanned/redundant in the FF five-factor model, adding momentum and using timely prices resurrects a large positive value alpha — value's standalone explanatory power is fragile but its diversification value against momentum is robust. VERDICT: orthogonal-by-construction within price/fundamental space (negative correlation), NOT the dead recombination lane.",
+        "confidence": "high",
+        "vote": "3-0 x2, 2-1 x1 (claims [9],[11] 3-0; [10] 2-1)",
+        "sources": [
+          "https://www.aqr.com/-/media/AQR/Documents/Journal-Articles/JPM-Fact-Fiction-and-Value-Investing.pdf",
+          "Asness, Frazzini, Israel, 'Fact, Fiction, and Value Investing,' Journal of Portfolio Management Fall 2015",
+          "Asness, Moskowitz & Pedersen, 'Value and Momentum Everywhere,' Journal of Finance 2013",
+          "AQR, 'Our Model Goes to Six and Saves Value From Redundancy Along the Way'"
+        ],
+        "evidence": "Verified against the primary AQR JPM PDF (numbers exact: 0.46 -> 0.58 value+profitability, -> 0.79 value+momentum, -> 0.84 three-way; period 1963-2014, long-short). Mechanism (negative correlation) corroborated by peer-reviewed Value and Momentum Everywhere. HML-redundancy-then-resurrection corroborated by Fama-French 2015 (JFE) plus AQR's six-factor replication ('there is no intercept left'... timely HML-DEV 'has an economically and statistically large intercept'). QUALIFICATION (does not flip sign or orthogonality): Ehsani & Linnainmaa (NBER w25551) note the practical diversification benefit may be limited by factor momentum / HML autocorrelation; post-2017 debate shows HML redundancy is sample-dependent — which actually reinforces the 'standalone value is fragile' framing. Relevant to this system: value and momentum/trend families it ALREADY has can be made diversifying if value uses timely prices — a low-cost change inside existing data."
+      },
+      {
+        "claim": "ORTHOGONAL FUNDAMENTAL FACTOR (consider): A long high-quality / short low-quality 'Quality Minus Junk' (QMJ) factor earned significant historical risk-adjusted returns out-of-sample across the U.S. plus 24 other countries, and its abnormal returns CANNOT be explained by the standard four-factor model (market/size/value/momentum) — it loads negatively on the price factors, so four-factor adjustment increases alpha rather than absorbing it. VERDICT: fundamentals-based (profitability/growth/safety), distinct anomaly orthogonal to price-trend families — not a recombination of existing price/value factors.",
+        "confidence": "medium",
+        "vote": "2-1 x2 (claims [12],[13])",
+        "sources": [
+          "https://www.aqr.com/Insights/Research/Working-Paper/Quality-Minus-Junk",
+          "Asness, Frazzini & Pedersen, 'Quality Minus Junk,' Review of Accounting Studies 2019, 24(1):34-112 (DOI 10.1007/s11142-018-9470-2)"
+        ],
+        "evidence": "Peer-reviewed (Review of Accounting Studies 2019) defeats a 'marketing fluff' refutation despite AQR commercial interest; the cited text is self-critical ('We cannot tie the returns of quality to risk... an anomaly, data mining... or a still-to-be-identified risk factor'). Quantitatively, US 4-factor alpha 0.66/month (t=10.20), global 0.45 (t=5.50); QMJ survives the Hou-Xue-Zhang replication crackdown via its profitability core. CAVEATS (qualify forward efficacy, not the historical/cross-market claim): explanatory power weakens post-COVID and correlates with sentiment; 'quality' definition is subjective/data-mining-prone; Novy-Marx 2013 and the q-factor model partly explain QMJ via profitability+investment factors — but those sit OUTSIDE the four-factor model, reinforcing rather than refuting the scoped claim. Both underlying claims were 2-1, hence medium. Requires fundamental data the system lacks today."
+      },
+      {
+        "claim": "RECOMBINATION (do NOT expect orthogonal alpha): The entire formulaic-alpha-mining literature operates inside the SAME OHLCV+vwap+returns information set the system already has. WorldQuant's 101 Formulaic Alphas are predominantly price-volume (one uses market cap; industry codes only for neutralization); AutoAlpha (evolutionary + PCA quality-diversity search) and the LLM-MCTS framework likewise mine only price/volume symbolic expressions and enforce diversity solely via intra-pool correlation caps (e.g., <0.8 or <0.7), with NO orthogonality guarantee to published factors or to a trend/momentum lane. NUANCE that is genuinely useful: these are cross-sectional, dollar/industry-neutral, low-mutual-correlation (101 Alphas: avg pairwise 15.9%, median 14.3%, 0.6-6.4 day holds) constructions — fundamentally different from the system's static long-only directional families — so they could add intra-price-space DIVERSIFICATION even though they are not orthogonal alternative data. VERDICT: recombination of correlated price data (the dead lane for orthogonal alpha), but a structurally different recombination than the floor tested.",
+        "confidence": "high",
+        "vote": "3-0 x6, 2-1 x1 (claims [8],[15],[16],[17],[18],[19] 3-0; [7] 2-1)",
+        "sources": [
+          "https://arxiv.org/pdf/1601.00991",
+          "https://arxiv.org/pdf/2002.08245",
+          "https://arxiv.org/html/2406.18394v3",
+          "https://arxiv.org/html/2505.11122"
+        ],
+        "evidence": "All four primary arXiv sources confirm price/volume-only inputs verbatim. 101 Alphas (Kakushadze, WorldQuant): 'mostly price-volume... albeit fundamental input is used in some... one alpha utilizing market cap... industry classification... used to industry-neutralize'; avg/median pairwise correlation 15.9%/14.3%. AutoAlpha (KDD 2020): PCA-QD 'to guide the search away from the well-explored space,' diversity = pairwise corr < 0.7. AlphaForge (AAAI 2025) and LLM-MCTS 'Navigating the Alpha Jungle' (AAAI 2026) both use only open/high/low/close/volume/vwap and enforce diversity via correlation thresholds, explicitly making no orthogonality claim. The 15.9% figure measures inter-alpha diversity, NOT orthogonality to the system's trend signals. Bottom line: novel symbolic combinations of the same inputs add no new information source — consistent with the system's pre-registered floor that more price-family recombination cannot beat the best part."
+      },
+      {
+        "claim": "SIGNAL COMBINATION / BET SIZING: Two findings bound what reweighting can achieve. (a) The 'forecast combination puzzle' is real and well-documented: simple equal-weight averaging empirically dominates sophisticated/optimal weighting schemes, with the leading explanation being parameter-estimation error (estimating weights/covariances adds variance that outweighs the theoretical benefit), and gains require INDEPENDENT/ORTHOGONAL information across forecasts. Therefore the system's floor result (equal-weight cannot beat its parts on correlated long-only price families) is the EXPECTED outcome, not a bug, and using the unused skill_weight to estimate per-signal weights risks ADDING estimation noise to a correlated price-only pool. (b) Hierarchical Risk Parity (HRP) is a robustness improvement (graph-theory + hierarchical clustering, no covariance inversion, addresses CLA's instability/concentration/underperformance and yields more stable weights under noisy covariance), but it only reweights existing return streams. VERDICT for both: RECOMBINATION/sizing — they harden infrastructure and stabilize weights but manufacture NO orthogonal alpha and cannot escape the 'beat the parts' ceiling for correlated long-only price families. Time-varying, performance-conditional combination (AlphaForge: dynamic 4.40% IC vs static fitted-weight 2.43% IC, ~80% relative, OOS 2018-2022) CAN beat a fixed blend — but only over a large, decorrelated factor zoo, not a small correlated pool.",
+        "confidence": "high",
+        "vote": "3-0 x4, 3-0 x1 (claims [20],[21],[22-note 2-1],[23],[14]); [22] was 2-1, [14],[20],[21],[23] 3-0",
+        "sources": [
+          "https://arxiv.org/pdf/2205.04216",
+          "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2708678",
+          "https://arxiv.org/html/2406.18394v3",
+          "Lopez de Prado, 'Building Diversified Portfolios that Outperform Out-of-Sample,' Journal of Portfolio Management 42(4):59-69, 2016",
+          "Wang & Hyndman, 'Forecast combinations: an over 50-year review,' Int. J. Forecasting 2022/2023"
+        ],
+        "evidence": "Forecast-combination puzzle verbatim from Wang & Hyndman survey ('simple averaging often empirically dominates sophisticated weighting schemes that should asymptotically be superior'; Timmermann 2006 attributes success of simple combos to avoiding parameter-estimation error; 'estimation errors in optimal/regression weights tend to be particularly large due to difficulties... estimating the covariance matrix'). Domain-general mechanism (correlated forecast errors -> redundancy -> unstable weights) maps directly onto the system's correlated price pool; the system's own walk-forward reproduces it. HRP verified near-verbatim against Lopez de Prado SSRN 2708678 (design intent and weight-stability are undisputed; HRP's empirical out-of-sample SUPERIORITY is contested by Engle et al. 2019 / De Nard et al. 2021 / Trucios et al. 2023, but that is a separate empirical claim). AlphaForge dynamic-vs-static verified against AAAI 2025 (note: 'static' baseline was a FITTED linear blend, a harder baseline than naive equal-weight, so the inference is conservative). [22] was a 2-1 split (point/macro-forecasting domain, strong analogy not direct financial proof) but the rest are 3-0 and the system's own floor empirically converges with it — net high."
+      },
+      {
+        "claim": "LLM-FOR-FINANCE CRITICAL ASSESSMENT (do NOT adopt the architectures): Reported profits of LLM-based trading agents (FinMem, FinAgent, QuantAgent, FinCON, TradingAgents) collapse on data after the LLM's training cutoff — the best agent's return drops ~50% to a statistical zero, with Sharpe decaying 51.48%-62.23% and Total Return 50.18%-71.85% in the post-cutoff generalization period. Fine-tuning LLMs on financial data raises in-distribution accuracy (Qwen2.5-7B 51.61%->72.16%; Llama-3.1-8B 54.73%->76.52%) but DROPS out-of-sample generalization by 21.53% and 18.06% with rising memory/bias scores — pure memorization of historical patterns, not trading skill. VERDICT: these multi-agent/fine-tuned-LLM frameworks LACK rigorous out-of-sample validation and show look-ahead/data-leakage; they are the dead lane. The validated takeaway is the rigorous post-cutoff evaluation METHODOLOGY, not the agents.",
+        "confidence": "high",
+        "vote": "3-0 x2 (claims [5],[6])",
+        "sources": [
+          "https://arxiv.org/pdf/2510.07920",
+          "arXiv:2510.07920 'Profit Mirage: Revisiting Information Leakage in LLM-based Financial Agents' (Oct 2025)"
+        ],
+        "evidence": "All numbers verbatim from primary source (GPT-4o backbone, cutoff Oct 2023; backtest Q2-Q3 2021 vs generalization Q3-Q4 2024 post-cutoff). 'The best-performing LLM-based agent also drop 50%! The dazzling return collapses to a statistical zero.' Fine-tuning: 'generalization capability declines substantially, with reductions of 21.53% and 18.06%... fine-tuning leads to overfitting on leaked data... pure memorization of historical patterns, not improved trading skill' (Memory Scores 0.78/0.81, Bias Scores 0.29/0.31). Corroborated by follow-on works (TradeTrap arXiv:2512.02261, Look-Ahead-Bench arXiv:2601.13770). MINOR nuances (do not refute): 'accuracy on unseen data' is QA-benchmark accuracy not literal P&L; n=2 fine-tuned models; the paper also promotes its own remedy 'FactFin' but the cited figures are its negative-baseline findings. A REFUTED sub-claim (1-2) — that the mechanism is specifically pre-training contamination of post-hoc explanations — was rejected, so attribute the decay to leakage/memorization generally, not that specific mechanism."
+      }
+    ],
+    "caveats": "COVERAGE GAP (most important): The task requested four seams, but surviving verified claims cover only Seam 1 (orthogonal alpha) and Seam 2 (combination/sizing) plus the LLM critique. There is NO confirmed claim for Seam 3 (Combinatorial Purged Cross-Validation, Deflated/Probabilistic Sharpe Ratio, Probability of Backtest Overfitting, Harvey-Liu-Zhu multiple-testing correction 'and the Cross-Section of Expected Returns') or Seam 4 (vectorized backtesting throughput, walk-forward optimization best practices, selection-bias deflation). These validation/throughput tools — which are the LOWEST-risk, highest-fit additions for a system that already has a rigorous walk-forward/prereg/bootstrap harness — remain unsurveyed here and must not be inferred from the combination-methodology claims [22]/[23], which are about WHY equal-weight wins, not about validation tooling. SOURCE/TIME-SENSITIVITY: (1) Headline SESTM Sharpe (4.29) and the smirk's 10.9%/yr are GROSS of costs, high-turnover, and concentrated in small/illiquid names — orthogonality is robust but net tradability/capacity for a real portfolio is uncertain and likely much lower. (2) AQR and Lopez de Prado sources carry commercial conflict-of-interest; mitigated by peer-reviewed publication and self-critical framing, but factor-premium magnitudes have decayed post-publication (value's 2017+ drawdown; ~26-50% typical OOS/post-pub decay). (3) Options-smirk and QMJ findings rested on 2-1 splits and require data feeds (options chains, fundamentals) the price-only system does not currently ingest — adoption cost is non-trivial. (4) Formulaic-alpha IC results (AlphaForge, MCTS) are largely on Chinese A-shares with documented retail-driven inefficiencies that may inflate IC vs U.S. large-cap, and IC/IR figures are not netted of transaction costs. (5) The 'forecast combination puzzle' evidence is from point/macro-forecasting, a strong analogy rather than a direct asset-allocation proof — though the system's own floor empirically converges with it.",
+    "openQuestions": [
+      "Seam 3 (validation rigor): Which specific deflation tools — Deflated Sharpe Ratio (Bailey & Lopez de Prado), Probability of Backtest Overfitting via CSCV, Combinatorial Purged Cross-Validation, and the Harvey-Liu-Zhu t-stat ~3.0 multiple-testing threshold — should bolt onto the existing prereg/bootstrap harness, and what is each one's documented out-of-sample false-discovery reduction? No verified claim covered this; it needs a dedicated follow-up search.",
+      "Seam 4 (backtest throughput): What vectorized/event-driven backtesting frameworks and walk-forward optimization practices scale to the candidate orthogonal signals, and how do they handle selection-bias deflation across many trials? Unsurveyed.",
+      "Net-of-cost survivability: After realistic transaction costs, turnover caps, borrow costs, and capacity constraints, does the SESTM news-sentiment signal (or the options smirk) retain a tradable, orthogonal edge for a small/medium book — or does the alpha live only in microcaps that are uninvestable at scale?",
+      "Implementation cost vs. orthogonality payoff: For a price-only yfinance system with no ML library, what is the minimum-viable data/infra to capture the highest-confidence orthogonal lane (news NLP for SESTM, or FinBERT-class sentiment) versus the timely-price value+momentum reconstruction that needs NO new data feed and could be the cheapest first step?"
+    ],
+    "refuted": [
+      {
+        "claim": "The mechanism is pre-training contamination, not flawed risk management or noisy data: foundation models ingest web-scale corpora containing post-hoc explanations of past price moves, so the model recites memorized outcomes rather than forecasting; almost every published LLM-based agent fails to beat a random baseline once its knowledge cutoff is passed.",
+        "vote": "1-2",
+        "source": "https://arxiv.org/pdf/2510.07920"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.nber.org/system/files/working_papers/w26186/w26186.pdf",
+        "quality": "primary",
+        "angle": "Orthogonal alpha NLP options altdata",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.cambridge.org/core/journals/journal-of-financial-and-quantitative-analysis/article/abs/what-does-the-individual-option-volatility-smirk-tell-us-about-future-equity-returns/ECFD16BA9ACBDC8D577D1BD866FBEA72",
+        "quality": "primary",
+        "angle": "Orthogonal alpha NLP options altdata",
+        "claimCount": 3
+      },
+      {
+        "url": "https://arxiv.org/pdf/2510.07920",
+        "quality": "primary",
+        "angle": "Orthogonal alpha NLP options altdata",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/pdf/1601.00991",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.aqr.com/-/media/AQR/Documents/Journal-Articles/JPM-Fact-Fiction-and-Value-Investing.pdf",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.aqr.com/Insights/Research/Working-Paper/Quality-Minus-Junk",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/html/2406.18394v3",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/html/2505.11122",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/pdf/2002.08245",
+        "quality": "primary",
+        "angle": "Formulaic alphas practitioner white papers",
+        "claimCount": 5
+      },
+      {
+        "url": "https://hudsonthames.org/does-meta-labeling-add-to-signal-efficacy-triple-barrier-method/",
+        "quality": "blog",
+        "angle": "Signal combination bet sizing",
+        "claimCount": 5
+      },
+      {
+        "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2708678",
+        "quality": "primary",
+        "angle": "Signal combination bet sizing",
+        "claimCount": 4
+      },
+      {
+        "url": "https://arxiv.org/pdf/2205.04216",
+        "quality": "primary",
+        "angle": "Signal combination bet sizing",
+        "claimCount": 5
+      },
+      {
+        "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551",
+        "quality": "primary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf",
+        "quality": "primary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.nber.org/system/files/working_papers/w20592/w20592.pdf",
+        "quality": "primary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.sciencedirect.com/science/article/abs/pii/S0950705124011110",
+        "quality": "primary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 3
+      },
+      {
+        "url": "https://github.com/hudson-and-thames/mlfinlab/blob/master/mlfinlab/cross_validation/combinatorial.py",
+        "quality": "primary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 5
+      },
+      {
+        "url": "https://stefan-jansen.github.io/machine-learning-for-trading/08_ml4t_workflow/01_multiple_testing/",
+        "quality": "secondary",
+        "angle": "Validation rigor deflation",
+        "claimCount": 4
+      },
+      {
+        "url": "https://arxiv.org/abs/2606.08285",
+        "quality": "primary",
+        "angle": "Critical LLM trading frameworks leakage",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/abs/2512.23847",
+        "quality": "primary",
+        "angle": "Critical LLM trading frameworks leakage",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/abs/2507.20957",
+        "quality": "primary",
+        "angle": "Critical LLM trading frameworks leakage",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/abs/2512.23847v0",
+        "quality": "primary",
+        "angle": "Critical LLM trading frameworks leakage",
+        "claimCount": 4
+      }
+    ],
+    "stats": {
+      "angles": 5,
+      "sourcesFetched": 22,
+      "claimsExtracted": 103,
+      "claimsVerified": 25,
+      "confirmed": 24,
+      "killed": 1,
+      "afterSynthesis": 7,
+      "urlDupes": 1,
+      "budgetDropped": 7,
+      "agentCalls": 104
+    }
+  }
+}
