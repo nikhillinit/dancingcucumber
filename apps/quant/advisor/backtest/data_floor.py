@@ -8,6 +8,8 @@ from advisor.backtest.prereg import PreRegConfig
 from advisor.backtest.splits import purged_splits
 from advisor.backtest.stats import block_bootstrap_diff_lcb, book_sharpe
 from advisor.backtest.universe import classify_universe
+from advisor.backtest.validation import validation_report
+from advisor.backtest.validation_prereg import DEFAULT_VALIDATION
 
 
 def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | None = None,
@@ -52,6 +54,13 @@ def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | Non
         legacy_spy = book_sharpe(h.spy)
         verdict = "PASSED" if (beats_parts and beats_spy) else "INCONCLUSIVE"
 
+    validation = validation_report(
+        sweep.ensemble_test_returns,
+        {"ensemble": sweep.ensemble_test_returns,
+         "best_family": sweep.best_family_test_returns},
+        DEFAULT_VALIDATION,
+    )
+
     return {
         "verdict": verdict,
         "universe": universe,
@@ -63,4 +72,5 @@ def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | Non
         "best_family": book_sharpe(sweep.best_family_test_returns),
         "margin": float(cfg.margin),
         "passes": verdict == "PASSED",
+        "validation": validation,
     }
