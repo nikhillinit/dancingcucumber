@@ -10,6 +10,13 @@ DISCLOSURES = [
     "Point-in-time lag approximated (~90-day proxy); results indicative, not as-reported.",
     "yfinance is survivorship-biased (delisted names absent); long-side results upward-biased.",
     "Any LLM/news-derived feature may carry look-ahead from pretraining that cannot be purged.",
+    "This floor backtests only the price-only proxy; a PASS does not prove the 5-family advisor "
+    "satisfies spec section 7 (necessary, not sufficient).",
+    "Fixture universe requires full-window survival -> residual survivorship bias; long-side "
+    "results upward-biased.",
+    "Beat-the-parts is validated across purged time folds (2015-2023 spans the 2018/2020/2022 "
+    "stress regimes) as a proxy; it does not assert formal robustness across >=2 labeled market "
+    "regimes per spec section 7.",
 ]
 
 
