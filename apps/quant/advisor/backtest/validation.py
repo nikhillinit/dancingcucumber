@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from math import e
+from math import ceil, e
 from statistics import NormalDist
 
 import numpy as np
@@ -75,3 +75,28 @@ def deflated_sharpe(returns: pd.Series, n_trials: int, var_sr: float,
     T, skew, kurt = sharpe_moments(returns)
     sr0 = max(sr_benchmark, _sr0(n_trials, var_sr))
     return psr(sr_hat=sr, sr_benchmark=sr0, T=T, skew=skew, kurt=kurt)
+
+
+def effective_n_pca(family_returns: dict[str, pd.Series]) -> float:
+    """PCA participation ratio on the family return-series correlation matrix.
+    Neff = (sum eigenvalues)^2 / sum(eigenvalues^2). Correlated families -> small Neff."""
+    series = [pd.Series(s).reset_index(drop=True) for s in family_returns.values()]
+    if len(series) <= 1:
+        return float(len(series))
+    mat = pd.concat(series, axis=1).dropna()
+    if mat.shape[0] < 2:
+        return float(mat.shape[1])
+    corr = np.corrcoef(mat.to_numpy(), rowvar=False)
+    corr = np.nan_to_num(corr, nan=0.0)
+    lam = np.linalg.eigvalsh(corr)
+    lam = lam[lam > 0]
+    if lam.size == 0:
+        return 1.0
+    return float(lam.sum() ** 2 / (lam ** 2).sum())
+
+
+def n_for_dsr(family_returns: dict[str, pd.Series], declared_trials_N: int) -> int:
+    """Trials used for DSR: max(declared integer, ceil(effective-N)), floored at 1.
+    Effective-N may never drop the penalty below the pre-registered declared count."""
+    eff = ceil(effective_n_pca(family_returns)) if family_returns else 0
+    return max(1, declared_trials_N, eff)
