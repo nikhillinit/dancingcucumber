@@ -1,8 +1,10 @@
 # Floor v2 — result
 
-## Verdict: **UNSUPPORTED** (the floor is NOT cleared; advisor is not production-ready)
+## Verdict: **DEV_FAILED** — floor NOT cleared; advisor not production-ready
 
-No pre-registered construction (C, D, or E) cleared the dev stability gate, so per the pre-registered decision rule the verdict is **UNSUPPORTED** and the **held-out tail was never evaluated** (no candidate earned a holdout run). This is the rail-honest outcome: a clean negative, reported as the lead finding.
+The machine verdict printed by `node tools/run-floor.mjs` is **`DEV_FAILED`**: the universe is `formal` (30 names) and **no pre-registered construction (C, D, or E) cleared the dev stability gate**, so the **held-out tail was never evaluated** (no candidate earned a holdout run). Deliverable category: **not supported for production** (floor not cleared) — a clean negative, reported as the lead finding.
+
+> **Terminology bridge (auditor note):** `PREREG.md`'s decision rule reads "none pass → UNSUPPORTED", but the shipped `floor_metrics` reserves the `UNSUPPORTED` enum for thin (`do_not_run`, universe < 12) universes. This run has a *formal* universe where the dev gate ran and failed, so the code's correct enum is **`DEV_FAILED`** — that is what the release gate prints. `PREREG.md` is immutable and not edited; its wording collapses to the code's `DEV_FAILED` path. The conclusion (floor not cleared, production release blocked, holdout untouched) is identical either way.
 
 **Recorded:** 2026-06-16. Pre-registration: `PREREG.md` (config hash `1ad2ed4a…`, candidate order C→E, margin 0.0, IMMUTABLE). Fixture: 30 large-caps + SPY, 2015-2023 (`UNIVERSE_RULE.md`, SHA-256 `d40b9959…`), universe = **formal** (≥20).
 
@@ -22,7 +24,7 @@ Every fold delta is negative in every candidate. Rule B never deviated from equa
 - **necessary-not-sufficient:** this is the price-only proxy only; it does not speak to the full 5-family advisor. But the proxy floor that gates production release is not cleared.
 
 ## Gate status
-- `npm run advisor-gate` (report) → exit 0, prints `DEV_FAILED`/`UNSUPPORTED` + disclosures (per-commit, non-blocking).
+- `npm run advisor-gate` (report) → exit 0, prints `floor: DEV_FAILED` + disclosures (per-commit, non-blocking).
 - `node tools/run-floor.mjs --enforce` (release) → **exit 1** (verdict ≠ PASSED) — production release correctly blocked.
 - The holdout (`--holdout`, hash `1ad2ed4a…`) remains untouched and is reserved; do NOT run it without a dev-passing candidate.
 
