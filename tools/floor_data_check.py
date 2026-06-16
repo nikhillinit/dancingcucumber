@@ -6,7 +6,7 @@ import pandas as pd
 
 sys.path.insert(0, "apps/quant")
 from advisor.backtest.data_floor import floor_metrics  # noqa: E402
-from advisor.backtest.prereg import DEFAULT_CONFIG  # noqa: E402
+from advisor.backtest.prereg import DEFAULT_CONFIG, config_hash  # noqa: E402
 
 FIXTURE = Path("apps/quant/advisor/tests/fixtures/floor_prices.csv")
 
@@ -49,7 +49,16 @@ def main(argv: list[str]) -> int:
         print(f"floor: fixture missing at {FIXTURE} -- commit real price history first", flush=True)
         return 1 if enforce else 0
     panel = pd.read_csv(FIXTURE, index_col=0, parse_dates=True)
-    m = floor_metrics(panel, DEFAULT_CONFIG, prereg_hash=None)
+    # Holdout integrity (debate finding #1): the held-out tail is unlocked ONLY by
+    # the content hash of the actual (config + fixture) -- never an arbitrary string.
+    # Report/enforce default to prereg_hash=None so the holdout stays blinded during
+    # dev; the operator (Task 14) runs --holdout ONCE and confirms the printed hash
+    # equals the one committed in PREREG.md before trusting the verdict.
+    prereg_hash = None
+    if "--holdout" in argv:
+        prereg_hash = config_hash(DEFAULT_CONFIG, FIXTURE)
+        print(f"floor: holdout unlocked with config+fixture hash {prereg_hash}", flush=True)
+    m = floor_metrics(panel, DEFAULT_CONFIG, prereg_hash=prereg_hash)
     _print_verdict(m)
     return 0 if not enforce or m["verdict"] == "PASSED" else 1
 
