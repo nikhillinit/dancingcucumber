@@ -1,61 +1,66 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
-from advisor.backtest.floor import beats_floor, purged_walk_forward_sharpe
+from advisor.backtest.dev_gate import dev_gate
+from advisor.backtest.pipeline import run_dev_sweep, run_holdout
+from advisor.backtest.prereg import PreRegConfig
+from advisor.backtest.splits import purged_splits
+from advisor.backtest.stats import block_bootstrap_diff_lcb, book_sharpe
+from advisor.backtest.universe import classify_universe
 
 
-def _momentum_signal(prices: pd.Series, lookback: int = 126) -> pd.Series:
-    return np.sign(prices / prices.shift(lookback) - 1.0).fillna(0.0)
+def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | None = None,
+                  families: tuple | None = None, holdout_frac: float = 0.2) -> dict:
+    """Run the v2 floor: dev gate first, then one blinded holdout evaluation."""
+    families = families or cfg.families
+    assets = panel.drop(columns=["SPY"]).iloc[cfg.warmup:].reset_index(drop=True)
+    sweep = run_dev_sweep(panel, families, cfg, holdout_frac=holdout_frac)
 
+    dev_end = int(len(assets) * (1 - holdout_frac))
+    n_active = [int(assets.iloc[te].notna().all(axis=0).sum())
+                for _, te in purged_splits(dev_end, cfg.folds, cfg.embargo)] or [assets.shape[1]]
+    universe = classify_universe(n_active, cfg)
+    gate = dev_gate(sweep.fold_deltas, sweep.ensemble_test_returns,
+                    sweep.best_family_test_returns, cfg)
 
-def _trend_signal(prices: pd.Series, short: int = 50, long: int = 200) -> pd.Series:
-    return np.sign(prices.rolling(short).mean() - prices.rolling(long).mean()).fillna(0.0)
-
-
-def _long_flat(signal: pd.Series) -> pd.Series:
-    """Mirror the deployed allocator: it sizes a positive (long) position or holds.
-
-    There are no shorting rails (allocator caps with a single positive dollar limit),
-    so a bearish signal means FLAT (exit), not short. The floor must backtest what
-    actually ships, not a more-penalized long/short variant.
-    """
-    return (signal > 0).astype(float)
-
-
-def floor_metrics(
-    panel: pd.DataFrame,
-    benchmark: str = "SPY",
-    margin: float = 0.0,
-    folds: int = 5,
-    embargo: int = 5,
-) -> dict:
-    """Backtest the deployed long-flat price-only ensemble vs SPY (spec sections 6-7).
-
-    Returns OOS purged-walk-forward Sharpes for the ensemble, SPY buy-and-hold, and the
-    best single price family, plus whether the floor is cleared. All three strategy legs
-    use identical long-flat position construction so "beat the parts" is a fair comparison.
-    """
-    tickers = [c for c in panel.columns if c != benchmark]
-    ens, mom, tr = [], [], []
-    for t in tickers:
-        p = panel[t].dropna()
-        ensemble_sig = np.sign(_momentum_signal(p) + _trend_signal(p))
-        ens.append(purged_walk_forward_sharpe(p, _long_flat(ensemble_sig), folds, embargo))
-        mom.append(purged_walk_forward_sharpe(p, _long_flat(_momentum_signal(p)), folds, embargo))
-        tr.append(purged_walk_forward_sharpe(p, _long_flat(_trend_signal(p)), folds, embargo))
-
-    ensemble = float(np.mean(ens)) if ens else 0.0
-    best_family = max(float(np.mean(mom)) if mom else 0.0, float(np.mean(tr)) if tr else 0.0)
-
-    spy = panel[benchmark].dropna()
-    spy_sharpe = purged_walk_forward_sharpe(spy, pd.Series(1.0, index=spy.index), folds, embargo)
+    holdout = None
+    verdict = "DEV_FAILED"
+    legacy_spy = book_sharpe(panel["SPY"].iloc[cfg.warmup:].pct_change().fillna(0.0))
+    if universe == "do_not_run":
+        verdict = "UNSUPPORTED"
+    elif gate.passed and prereg_hash is not None:
+        h = run_holdout(panel, families, cfg, sweep.chosen_weights, holdout_frac=holdout_frac)
+        delta_lcb = block_bootstrap_diff_lcb(h.ensemble, h.best_family, cfg.bootstrap_block,
+                                             cfg.bootstrap_draws, cfg.bootstrap_seed,
+                                             level=cfg.final_lcb)
+        spy_lcb = block_bootstrap_diff_lcb(h.ensemble, h.spy, cfg.bootstrap_block,
+                                           cfg.bootstrap_draws, cfg.bootstrap_seed,
+                                           level=cfg.final_lcb)
+        beats_parts = delta_lcb > 0
+        beats_spy = spy_lcb > cfg.margin
+        holdout = {
+            "delta_lcb": delta_lcb,
+            "spy_lcb": spy_lcb,
+            "beats_parts": beats_parts,
+            "beats_spy": beats_spy,
+            "ensemble_sharpe": book_sharpe(h.ensemble),
+            "spy_sharpe": book_sharpe(h.spy),
+            "best_family_sharpe": book_sharpe(h.best_family),
+            "label": "diagnostic" if universe == "micro" else "formal",
+        }
+        legacy_spy = book_sharpe(h.spy)
+        verdict = "PASSED" if (beats_parts and beats_spy) else "INCONCLUSIVE"
 
     return {
-        "ensemble": ensemble,
-        "spy": spy_sharpe,
-        "best_family": best_family,
-        "margin": float(margin),
-        "passes": bool(beats_floor(ensemble, spy_sharpe, best_family, margin)),
+        "verdict": verdict,
+        "universe": universe,
+        "dev": {"passed": gate.passed, "reasons": gate.reasons, "fold_deltas": sweep.fold_deltas},
+        "weights": sweep.chosen_weights,
+        "holdout": holdout,
+        "ensemble": book_sharpe(sweep.ensemble_test_returns),
+        "spy": legacy_spy,
+        "best_family": book_sharpe(sweep.best_family_test_returns),
+        "margin": float(cfg.margin),
+        "passes": verdict == "PASSED",
     }

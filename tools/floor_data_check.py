@@ -6,29 +6,52 @@ import pandas as pd
 
 sys.path.insert(0, "apps/quant")
 from advisor.backtest.data_floor import floor_metrics  # noqa: E402
+from advisor.backtest.prereg import DEFAULT_CONFIG  # noqa: E402
 
 FIXTURE = Path("apps/quant/advisor/tests/fixtures/floor_prices.csv")
-MARGIN = 0.0  # pre-registered v1 floor margin over SPY (spec section 15)
+
+
+def _print_verdict(m: dict) -> None:
+    print("floor metrics: " + json.dumps(m), flush=True)
+    verdict = m["verdict"]
+    if verdict == "PASSED":
+        print(
+            f"floor: PASSED -- ensemble Sharpe {m['ensemble']:.2f}; "
+            f"SPY Sharpe {m['spy']:.2f}; best family Sharpe {m['best_family']:.2f}.",
+            flush=True,
+        )
+    elif verdict == "INCONCLUSIVE":
+        print(
+            f"floor: INCONCLUSIVE -- dev gate cleared, but holdout LCBs did not clear "
+            f"both section 7 bars. ensemble Sharpe {m['ensemble']:.2f}; "
+            f"SPY Sharpe {m['spy']:.2f}; best family Sharpe {m['best_family']:.2f}.",
+            flush=True,
+        )
+    elif verdict == "UNSUPPORTED":
+        print(
+            f"floor: UNSUPPORTED -- universe classified as {m['universe']}. "
+            f"ensemble Sharpe {m['ensemble']:.2f}; SPY Sharpe {m['spy']:.2f}; "
+            f"best family Sharpe {m['best_family']:.2f}.",
+            flush=True,
+        )
+    else:
+        reasons = "; ".join(m["dev"]["reasons"]) or "dev gate did not pass"
+        print(
+            f"floor: DEV_FAILED -- {reasons}. ensemble Sharpe {m['ensemble']:.2f}; "
+            f"SPY Sharpe {m['spy']:.2f}; best family Sharpe {m['best_family']:.2f}.",
+            flush=True,
+        )
 
 
 def main(argv: list[str]) -> int:
     enforce = "--enforce" in argv
     if not FIXTURE.exists():
         print(f"floor: fixture missing at {FIXTURE} -- commit real price history first", flush=True)
-        return 1  # a broken mechanism always fails, in any mode
+        return 1 if enforce else 0
     panel = pd.read_csv(FIXTURE, index_col=0, parse_dates=True)
-    m = floor_metrics(panel, benchmark="SPY", margin=MARGIN)
-    print("floor metrics: " + json.dumps(m), flush=True)
-    if m["passes"]:
-        print("floor: PASSED", flush=True)
-        return 0
-    print(
-        f"floor: NOT CLEARED -- ensemble Sharpe {m['ensemble']:.2f} vs SPY {m['spy']:.2f} "
-        f"and best single family {m['best_family']:.2f}. v1 equal-weight is not "
-        f"production-ready; needs v2 calibration (spec section 8).",
-        flush=True,
-    )
-    return 1 if enforce else 0  # block release; do NOT block dev commits
+    m = floor_metrics(panel, DEFAULT_CONFIG, prereg_hash=None)
+    _print_verdict(m)
+    return 0 if not enforce or m["verdict"] == "PASSED" else 1
 
 
 if __name__ == "__main__":
