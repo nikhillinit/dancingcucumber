@@ -34,5 +34,12 @@
     ],
     "deny": [],
     "ask": []
+  },
+  "enabledPlugins": {
+    "quantitative-trading@claude-code-workflows": true,
+    "wealth-management@claude-for-financial-services": true,
+    "earnings-reviewer@claude-for-financial-services": true,
+    "equity-research@claude-for-financial-services": true,
+    "market-researcher@claude-for-financial-services": true
   }
 }
