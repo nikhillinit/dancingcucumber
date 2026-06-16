@@ -9,9 +9,13 @@ from advisor.backtest.walk_forward import (
 )
 
 
-def test_disclosure_header_has_all_four_lines():
+def test_disclosure_header_has_all_seven_lines():
     header = disclosure_header()
-    assert len(DISCLOSURES) == 4
+    assert len(DISCLOSURES) == 7
+    assert any("price-only proxy" in line for line in DISCLOSURES)
+    assert any("survivorship" in line for line in DISCLOSURES)
+    assert any("does not prove the 5-family" in line for line in DISCLOSURES)
+    assert any("labeled market regimes" in line for line in DISCLOSURES)
     for line in DISCLOSURES:
         assert line in header
 
@@ -22,7 +26,7 @@ def test_long_only_on_uptrend_is_profitable_and_carries_disclosures():
     result = walk_forward(prices, signal, cost_per_turn=0.0)
     assert result.total_return > 0
     assert result.n_periods == 50
-    assert len(result.disclosures) == 4
+    assert len(result.disclosures) == 7
 
 
 def test_costs_reduce_return():
