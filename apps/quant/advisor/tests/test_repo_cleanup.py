@@ -191,3 +191,24 @@ def test_tracked_python_modules_do_not_import_retired_modules() -> None:
             offenders.append(f"{rel_path}: {', '.join(blocked)}")
 
     assert offenders == []
+
+
+def test_no_tracked_python_scripts_at_repo_root() -> None:
+    result = subprocess.run(
+        ["git", "ls-files", "*.py"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sep = chr(47)
+    root_scripts = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() and sep not in line.strip()
+    ]
+    assert root_scripts == []
+
+
+def test_nested_aihedgefund_directory_absent() -> None:
+    assert not (REPO_ROOT / "AIHedgeFund").exists()
