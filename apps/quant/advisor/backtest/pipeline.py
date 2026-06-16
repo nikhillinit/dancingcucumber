@@ -82,11 +82,22 @@ def run_dev_sweep(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
         ens_parts.append(ens_r)
         best_parts.append(fam_rets[best_f])
 
+    # Freeze the blend weights on the FULL dev portion (leakage-safe: dev excludes
+    # the holdout), NOT the arbitrary last fold (debate finding #3). run_holdout
+    # fits its transform on the full dev portion too -- keep the two symmetric so
+    # the held-out tail is scored with a single pre-registered final model.
+    full_idx = list(range(len(dev)))
+    full_scores = {f: _family_scores(f, dev, full_idx, full_idx, cfg.pct_clip)
+                   for f in families}
+    frozen = select_weights(full_scores, dev.reset_index(drop=True), families,
+                            cfg.weight_grid, cfg.train_lift_threshold,
+                            cfg.cost_per_turn, caps) if full_idx else chosen
+
     return SweepResult(
         fold_deltas=deltas,
         ensemble_test_returns=pd.concat(ens_parts, ignore_index=True) if ens_parts else pd.Series(dtype=float),
         best_family_test_returns=pd.concat(best_parts, ignore_index=True) if best_parts else pd.Series(dtype=float),
-        chosen_weights=chosen,
+        chosen_weights=frozen,
     )
 
 
