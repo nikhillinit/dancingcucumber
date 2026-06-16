@@ -1,10 +1,15 @@
+from math import e
 from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
 
 from advisor.backtest.stats import book_sharpe
-from advisor.backtest.validation import per_obs_sharpe, psr, sharpe_moments
+from advisor.backtest.validation import (
+    deflated_sharpe, per_obs_sharpe, psr, sharpe_moments, var_sr_trials,
+)
+
+_GAMMA = 0.5772156649015329
 
 
 def _r(mean, sd=0.01, n=1250, seed=0):
@@ -44,3 +49,70 @@ def test_psr_rises_with_more_observations():
 def test_psr_negative_skew_lowers_confidence():
     base = dict(sr_hat=0.08, sr_benchmark=0.0, T=1250, kurt=6.0)
     assert psr(skew=-2.0, **base) < psr(skew=0.0, **base)
+
+
+def _ref_sr0(N, var_sr):
+    """Independent re-derivation of the deflated benchmark from the published formula."""
+    z = NormalDist()
+    return var_sr ** 0.5 * ((1 - _GAMMA) * z.inv_cdf(1 - 1.0 / N)
+                            + _GAMMA * z.inv_cdf(1 - 1.0 / (N * e)))
+
+
+def _ref_dsr(returns, N, var_sr, sr_benchmark=0.0):
+    sr = per_obs_sharpe(returns)
+    T, skew, kurt = sharpe_moments(returns)
+    sr0 = max(sr_benchmark, _ref_sr0(N, var_sr))
+    denom = (1 - skew * sr + ((kurt - 1) / 4) * sr ** 2) ** 0.5
+    return NormalDist().cdf((sr - sr0) * (T - 1) ** 0.5 / denom)
+
+
+def test_dsr_matches_independent_reference():
+    r = _r(0.0012, sd=0.01, n=1250, seed=7)
+    got = deflated_sharpe(r, n_trials=45, var_sr=4e-4, sr_benchmark=0.0)
+    assert abs(got - _ref_dsr(r, 45, 4e-4)) < 1e-12
+
+
+def test_dsr_units_handoff_example_reconciled():
+    # Annualized 2.5 -> per-obs; verifies the module agrees with the hand formula
+    # on the handoff's scenario. NOT a magic 0.90 literal; an independent re-derivation.
+    import numpy as np
+    r = _r(2.5 / np.sqrt(252) * 0.01, sd=0.01, n=1250, seed=11)  # ~per-obs SR 0.1575
+    got = deflated_sharpe(r, n_trials=100, var_sr=3e-4)
+    assert abs(got - _ref_dsr(r, 100, 3e-4)) < 1e-12
+
+
+def test_dsr_falls_as_trial_count_rises():
+    r = _r(0.0012, sd=0.01, n=1250, seed=7)
+    assert deflated_sharpe(r, n_trials=200, var_sr=4e-4) < deflated_sharpe(r, n_trials=5, var_sr=4e-4)
+
+
+def test_dsr_n1_is_undeflated_and_does_not_raise():
+    # N=1 -> no multiple testing -> SR0=0 -> DSR == PSR at the benchmark. inv_cdf(0) must
+    # never be hit (StatisticsError). Guards n_for_dsr's floor-of-1 path.
+    r = _r(0.0012, sd=0.01, n=1250, seed=7)
+    T, skew, kurt = sharpe_moments(r)
+    assert abs(deflated_sharpe(r, n_trials=1, var_sr=4e-4)
+               - psr(per_obs_sharpe(r), 0.0, T, skew, kurt)) < 1e-12
+
+
+def test_larger_var_sr_is_stricter():
+    # Direction of the dominant knob: larger cross-trial dispersion -> larger SR0 -> lower DSR.
+    r = _r(0.0012, sd=0.01, n=1250, seed=7)
+    assert deflated_sharpe(r, n_trials=45, var_sr=1e-3) < deflated_sharpe(r, n_trials=45, var_sr=1e-9)
+
+
+def test_var_sr_trials_is_sample_variance_of_trial_sharpes():
+    import numpy as np
+    sharpes = [0.05, 0.10, 0.15, 0.20]
+    assert abs(var_sr_trials(sharpes) - float(np.var(sharpes, ddof=1))) < 1e-12
+
+
+def test_deflation_bites_at_production_var_sr():
+    # Bind the "fails harder" property to the value that SHIPS, not a hand-picked strict one.
+    from advisor.backtest.validation_prereg import DEFAULT_VALIDATION
+    v = DEFAULT_VALIDATION.declared_var_sr
+    r = _r(0.0005, sd=0.01, n=1250, seed=5)            # moderate Sharpe near the floor's level
+    T, skew, kurt = sharpe_moments(r)
+    undeflated = psr(per_obs_sharpe(r), 0.0, T, skew, kurt)   # N=1 equivalent
+    deflated = deflated_sharpe(r, n_trials=45, var_sr=v)
+    assert deflated < undeflated                       # multiple-testing penalty bites at ship config
