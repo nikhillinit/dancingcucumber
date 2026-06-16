@@ -100,3 +100,13 @@ def n_for_dsr(family_returns: dict[str, pd.Series], declared_trials_N: int) -> i
     Effective-N may never drop the penalty below the pre-registered declared count."""
     eff = ceil(effective_n_pca(family_returns)) if family_returns else 0
     return max(1, declared_trials_N, eff)
+
+
+def minbtl_exceeded(n_trials: int, max_trials: int) -> bool:
+    """True when the search budget is over-spent (gate is meaningless past this)."""
+    return n_trials > max_trials
+
+
+def tstat_meets_hurdle(tstat: float | None, hurdle: float) -> bool:
+    """Harvey-Liu-Zhu selection hurdle. None (no t-stat claim) does not meet it."""
+    return tstat is not None and tstat >= hurdle
