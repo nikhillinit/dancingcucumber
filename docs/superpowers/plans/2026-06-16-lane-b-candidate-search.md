@@ -22,6 +22,16 @@
 
 ---
 
+## Design decision: the fixture-feasible horizon (settled before pre-registration)
+
+The frozen pipeline is **slice-then-compute**: `_family_scores` runs the raw metric on the already-sliced `dev` frame, so `value`'s `shift(value_lookback)` makes the **first `value_lookback` dev rows NaN→flat**, independent of `warmup`. On the real fixture (~2268 days, warmup 200 → dev ≈ 1654, 5-fold `purged_splits` → 4 test folds of ~330; fold-1 train ends at ~325):
+
+> **`dead_prefix_folds = value_lookback / (dev_rows / folds)`.** If a fold's *train* slice is entirely below `value_lookback`, `fit_percentile_transform` gets an empty `pos` → value is flat for that whole fold → the blend collapses toward momentum-standalone → negative fold deltas → `dev_gate` ("median Δ>0 AND ≥70% folds positive") fails **for non-signal reasons**. A classic 36–60-mo LT-reversal lookback (756–1260) gives `dead_prefix ≈ 1.8–3.8` → a **guaranteed false negative** that would burn the pre-registered trial.
+
+**Therefore classic long-term reversal is NOT testable on this 9-yr price-only fixture.** The settled decision: pre-register an **intermediate-term reversal at a feasible horizon** — `value_lookback = 270`, `value_skip = 126` (formation window ≈ 13mo→6mo ago, still excluding the recent 6-mo momentum window), keeping `value_lookback < ~325` so **every dev fold has a live value leg** (a fair dev gate). This horizon sits *near* `long_momentum`, so the **orthogonality kill-gate (Task 6) becomes the genuine pivot** — if intermediate reversal is just negated momentum, it dies there cheaply, and classic LT-reversal (and fundamental value) move to **Reading B** (Task 11) on a longer or fundamentals-bearing fixture. Picking 756-with-a-caveat is rejected; the feasibility ceiling is enforced by a unit test (Task 1) and a real-fixture guard (Task 4).
+
+---
+
 ## File structure (created; all NEW, none frozen)
 
 | File | Responsibility |
@@ -60,7 +70,12 @@ def test_default_candidate_freezes_methodology():
     # Pre-committed methodology (rail #4) — these are the falsifiable choices.
     assert c.families == ("value", "momentum")
     assert c.value_skip == 126            # exclude the 6mo momentum window
-    assert c.value_lookback == 756        # 36mo formation (short end of LT-reversal)
+    assert c.value_lookback == 270        # fixture-feasible intermediate reversal (see note)
+    # Feasibility ceiling (rail #5): value must be live in EVERY dev fold. On the
+    # 2015-2023 fixture, dev≈1654, fold_size≈330, fold-1 train ends ~325, so a
+    # value_lookback >= ~325 leaves fold 1 with an all-NaN train -> dead leg ->
+    # dev gate unwinnable for non-signal reasons. Keep margin for the percentile fit.
+    assert c.value_lookback <= 300
     assert 0.0 < c.orthogonality_tau <= 0.5
     assert c.declared_trials_N >= 45      # inherits the conservative MinBTL budget
     # Inherited floor gate params must match the floor so the bench is faithful.
@@ -100,7 +115,7 @@ class CandidatePreReg:
     # --- candidate-specific (the falsifiable choices) ---
     families: tuple[str, ...] = ("value", "momentum")
     value_skip: int = 126                 # skip recent 6mo -> excludes momentum window
-    value_lookback: int = 756             # 36mo formation (DeBondt-Thaler LT-reversal)
+    value_lookback: int = 270             # ~13mo->6mo formation; FIXTURE-FEASIBLE (< ~325)
     orthogonality_tau: float = 0.40       # max |Pearson corr| of value vs LM / MR on dev
     declared_trials_N: int = 45           # DSR multiple-testing N (>= MinBTL budget 45)
     # --- inherited from the floor so the bench is faithful (mirror PreRegConfig) ---
@@ -151,10 +166,10 @@ git commit -m "feat(research): CandidatePreReg immutable methodology surface for
 
 ### Task 2: `candidate_raw` — the `value` (long-term-reversal) signal
 
-**Why this is NOT a relabel of a rejected family** (rail #4, advisor):
+**Construction & the relabel risk** (rail #4, advisor; see the horizon note above):
 - `momentum` = `p/p.shift(126)-1` (6mo); `long_momentum` = `p/p.shift(252)-1` (12mo) — **recent** trend.
 - `mean_reversion` = `(SMA10 - p)/p` — **short-horizon** (10-day) snap-back.
-- `value` (this task) = `-(p.shift(126)/p.shift(756) - 1)` — the **negated** return over the 36-mo→6-mo *formation* window. Skipping the most recent 126 days (`shift(126)`) deliberately excludes the momentum window, so `value` is bullish on multi-year *losers* and is constructed at a horizon distinct from all three above. Whether it is *empirically* decorrelated is the kill-gate (Task 6), not an assumption.
+- `value` (this task) = `-(p.shift(126)/p.shift(270) - 1)` — the **negated** return over the ~13mo→6mo *formation* window. Skipping the most recent 126 days (`shift(126)`) excludes the momentum window, so `value` is bullish on intermediate-term *losers*. Because the fixture forces a feasible (sub-325) lookback, this horizon sits **near `long_momentum`** — so this is genuinely at risk of being negated-momentum in disguise. That is exactly why the **orthogonality gate (Task 6) is the pivot**: if `value` is empirically correlated with `long_momentum`/`mean_reversion`, it is the rejected factor relabeled and the plan stops there. Classic 36–60mo LT-reversal is infeasible here and moves to Reading B (Task 11).
 
 **Files:**
 - Create: `apps/quant/advisor/research/candidate_signals.py`
@@ -172,19 +187,26 @@ from advisor.research.candidate_signals import VALUE, candidate_raw
 def _prices(n=900, drift=0.0):
     return pd.Series(100.0 * np.exp(np.cumsum(np.full(n, drift))))
 
-def test_value_is_bullish_for_long_term_losers():
-    # A name that fell over the formation window then flattened -> positive value raw.
-    p = pd.concat([_prices(400, drift=-0.003), _prices(500, drift=0.0)], ignore_index=True)
-    v = candidate_raw(VALUE, p, value_skip=126, value_lookback=756)
+def _declining_then_flat(n_decline=374, n_flat=126, drift=-0.003):
+    # ONE continuous series (no concat discontinuity): falls across the formation
+    # window, then flat inside the recent skip window.
+    dec = 100.0 * np.exp(np.cumsum(np.full(n_decline, drift)))
+    flat = np.full(n_flat, dec[-1])
+    return pd.Series(np.concatenate([dec, flat]))
+
+def test_value_is_bullish_for_intermediate_term_losers():
+    # Falls across [t-270, t-126], flat in the last 126 -> formation return < 0 -> value > 0.
+    p = _declining_then_flat()
+    v = candidate_raw(VALUE, p, value_skip=126, value_lookback=270)
     assert v.dropna().iloc[-1] > 0   # past loser -> bullish reversal
 
 def test_value_excludes_recent_window_via_skip():
     # value at t depends on p[t-skip] and p[t-lookback], never on p[t-1..t-skip+1].
     p = _prices(900)
-    base = candidate_raw(VALUE, p, value_skip=126, value_lookback=756)
+    base = candidate_raw(VALUE, p, value_skip=126, value_lookback=270)
     spiked = p.copy()
     spiked.iloc[-50:] *= 2.0          # perturb only the last 50 days (inside the skip)
-    after = candidate_raw(VALUE, spiked, value_skip=126, value_lookback=756)
+    after = candidate_raw(VALUE, spiked, value_skip=126, value_lookback=270)
     assert np.isclose(base.iloc[-1], after.iloc[-1])   # last 50 days don't enter value(t)
 
 def test_known_families_delegate_to_frozen_raw():
@@ -213,13 +235,15 @@ VALUE = "value"
 
 
 def candidate_raw(family: str, prices: pd.Series, *, value_skip: int = 126,
-                  value_lookback: int = 756) -> pd.Series:
+                  value_lookback: int = 270) -> pd.Series:
     """Long-flat RAW strength (sign carries direction; transform clamps <=0 to flat).
     Known price families delegate to the frozen floor metric (read-only). The new
-    'value' family is long-term reversal: the NEGATIVE of the formation-window return
-    from `value_lookback` ago to `value_skip` ago. Skipping the recent `value_skip`
-    days excludes the momentum window -> orthogonal-by-construction to 6-12mo momentum.
-    NaN where history is insufficient (handled downstream as flat)."""
+    'value' family is intermediate-term reversal: the NEGATIVE of the formation-window
+    return from `value_lookback` ago to `value_skip` ago. Skipping the recent
+    `value_skip` days excludes the momentum window. Whether this is decorrelated from
+    momentum is the Task-6 kill-gate, NOT an assumption. NaN for the first
+    `value_lookback` rows (handled downstream as flat); keep `value_lookback` below
+    fold-1's train end so no dev fold is dead (see plan horizon note)."""
     if family == VALUE:
         p = pd.Series(prices).astype(float)
         formation = p.shift(value_skip) / p.shift(value_lookback) - 1.0
@@ -469,6 +493,23 @@ def test_bench_reproduces_floor_construction_C():
     assert ens == pytest.approx(0.732, abs=0.01)     # FLOOR_RESULT.md C ensemble
     assert best == pytest.approx(0.828, abs=0.01)    # FLOOR_RESULT.md C best family
     assert all(d < 0 for d in res.fold_deltas)       # every fold delta negative
+
+def test_value_leg_is_live_in_every_dev_fold():
+    # Feasibility guard (rail #5): the pre-registered value_lookback must leave a
+    # non-degenerate positive-value training set in EVERY dev fold on the real fixture,
+    # else the dev gate is rigged to fail for non-signal reasons.
+    from advisor.backtest.splits import purged_splits
+    from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C
+    from advisor.research.candidate_signals import VALUE, candidate_raw
+    panel = <load_panel>()
+    assets = [c for c in panel.columns if c != "SPY"]
+    prices_all = panel[assets].iloc[C.warmup:].reset_index(drop=True)
+    dev = prices_all.iloc[:int(len(prices_all) * 0.8)]
+    val = candidate_raw(VALUE, dev[assets[0]], value_skip=C.value_skip,
+                        value_lookback=C.value_lookback)
+    for train_idx, _ in purged_splits(len(dev), C.folds, C.embargo):
+        live_pos = val.iloc[train_idx].dropna()
+        assert (live_pos > 0).sum() >= 10   # non-degenerate percentile fit per fold
 ```
 
 - [ ] **Step 3: Run the test**
@@ -592,13 +633,14 @@ git commit -m "feat(research): dev-fold raw-correlation diagnostic for the value
 
 ```powershell
 $env:PYTHONUTF8=1; $env:PYTHONPATH="apps/quant"
-python -c "from advisor.research.orthogonality import dev_fold_raw_corr; from advisor.backtest.<floor_fixture_module> import <load_panel> as L; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C; print(dev_fold_raw_corr(L(), warmup=C.warmup, holdout_frac=0.2, value_skip=C.value_skip, value_lookback=C.value_lookback, neighbors=('long_momentum','mean_reversion'), folds=C.folds, embargo=C.embargo))"
+python -c "from advisor.research.orthogonality import dev_fold_raw_corr; from advisor.backtest.<floor_fixture_module> import <load_panel> as L; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C; print(dev_fold_raw_corr(L(), warmup=C.warmup, holdout_frac=0.2, value_skip=C.value_skip, value_lookback=C.value_lookback, neighbors=('momentum','long_momentum','mean_reversion'), folds=C.folds, embargo=C.embargo))"
 ```
 
 - [ ] **Step 2: Apply the pre-registered decision rule**
 
-- **PASS (proceed to B2):** `max(|corr(value, long_momentum)|, |corr(value, mean_reversion)|) < orthogonality_tau (0.40)`. The value signal is empirically decorrelated from the rejected neighbors → the AQR diversification hypothesis is live.
-- **FAIL (STOP — cheap negative):** if either |corr| ≥ 0.40, `value` is a relabel of an already-rejected factor (plan4). Record the negative in `CANDIDATE_RESULT.md`, skip B2 entirely, and jump to Task 11 (Reading B). This is the *intended* cheap-falsification outcome and a valid deliverable.
+- **GATE NEIGHBORS** = `long_momentum`, `mean_reversion` (the rejected-factor relabel check). `momentum` is reported as a **diagnostic only** — it is `value`'s blend partner, so its correlation is the most decision-relevant number to *see* pre-holdout (the AQR thesis is value⊥momentum), but §7.2 ultimately adjudicates the blend; do not gate on it.
+- **PASS (proceed to B2):** `max(|corr(value, long_momentum)|, |corr(value, mean_reversion)|) < orthogonality_tau (0.40)`. The value signal is empirically decorrelated from the rejected neighbors → the diversification hypothesis is live. Record the `momentum` diagnostic alongside.
+- **FAIL (STOP — cheap negative):** if either gated |corr| ≥ 0.40, `value` is a relabel of an already-rejected factor (plan4). Record the negative in `CANDIDATE_RESULT.md`, skip B2 entirely, and jump to Task 11 (Reading B). This is the *intended* cheap-falsification outcome and a valid deliverable.
 
 - [ ] **Step 3: Record the measurement (no secrets) and commit the doc**
 
@@ -758,7 +800,7 @@ git commit -m "feat(research): candidate_metrics mirrors floor_metrics over the 
 
 - [ ] **Step 1: Write & commit `CANDIDATE_PREREG.md` BEFORE running**
 
-Contents: `candidate_hash(DEFAULT_CANDIDATE)`, the frozen constants (families/order `("value","momentum")`, `value_skip=126`, `value_lookback=756`, `orthogonality_tau=0.40`, `declared_trials_N=45`), the fixture path + SHA, the candidate order (primary: `value+momentum`; pre-registered secondary ONLY if primary dev-passes-but-holdout-fails: `value+momentum+trend`, which increments effective N), and the acceptance bar (the floor's gates verbatim — no new thresholds). Commit before Step 2.
+Contents: `candidate_hash(DEFAULT_CANDIDATE)`, the frozen constants (families/order `("value","momentum")`, `value_skip=126`, `value_lookback=270`, `orthogonality_tau=0.40`, `declared_trials_N=45`), the fixture path + SHA, the candidate order (primary: `value+momentum`; pre-registered secondary ONLY if primary dev-passes-but-holdout-fails: `value+momentum+trend`, which increments effective N), and the acceptance bar (the floor's gates verbatim — no new thresholds). Commit before Step 2.
 
 ```bash
 git add apps/quant/advisor/research/CANDIDATE_PREREG.md
@@ -776,7 +818,7 @@ python -c "from advisor.research.candidate_floor import candidate_metrics; from 
 
 - `verdict == "PASSED"` (dev gate passed AND holdout `beats_parts` AND `beats_spy`) → **a real candidate exists.** Additionally confirm `validation["passes"]` (DSR ≥ 0.95 at N=45) for promotion-readiness. Proceed to Task 9 (promotion path).
 - `verdict in {"DEV_FAILED","INCONCLUSIVE","UNSUPPORTED"}` → **clean negative.** Record it. The holdout was either never touched (DEV_FAILED) or touched once and failed (INCONCLUSIVE). Do NOT retry horizons ad hoc — the only permitted second run is the pre-registered `value+momentum+trend`, and it increments `declared_trials_N` (re-run DSR at the higher N). After the pre-registered set is exhausted, Reading A is concluded.
-- **Power caveat (record it):** with `value_lookback=756` on the 9-yr fixture, the value signal is undefined for the first ~756 post-warmup rows, concentrating its contribution in later folds. A `DEV_FAILED` here may reflect *insufficient evaluable history*, not a dead signal — which is precisely the bridge to Reading B (Task 11), not a refutation of value investing.
+- **Scope caveat (record it):** the feasibility fix (Task 1, `value_lookback=270`, verified live in every dev fold by Task 4's guard) means a `DEV_FAILED`/`INCONCLUSIVE` here is a **genuine signal verdict, not a rigged one**. But it tests *intermediate-term* reversal only — a negative does **not** refute classic 36–60mo LT-reversal or fundamental value, both of which are fixture-infeasible here and move to Reading B (Task 11). In practice the cheap kill happens earlier at Task 6 (orthogonality); reaching a clean dev/holdout verdict at all means `value` was decorrelated yet still didn't beat the parts.
 
 - [ ] **Step 4: Append results to `CANDIDATE_RESULT.md` and commit**
 
@@ -816,7 +858,8 @@ Deep-research verdict: PBO/CSCV is **audit-only, medium-confidence, synthetic-va
 **Spec coverage** (against the design + advisor strengtheners):
 - Rail-safe separate bench reusing frozen primitives → Tasks 1–3, 7. ✓
 - Golden-replication trust anchor → Task 4. ✓
-- Orthogonality as the *pivot* kill-gate → Tasks 5–6. ✓
+- Orthogonality as the *pivot* kill-gate → Tasks 5–6 (gates `long_momentum`/`mean_reversion`; `momentum` reported as diagnostic). ✓
+- Fixture-feasible horizon (no rigged DEV_FAILED) → Design-decision note + `value_lookback=270` + feasibility ceiling test (Task 1) + real-fixture live-in-every-fold guard (Task 4). ✓
 - Holdout-leakage guard (dev-only construction, holdout once iff dev passes) → built into Tasks 3/7, asserted in `test_holdout_blinded_until_dev_passes`. ✓
 - Pre-committed methodology, outcomes by floor gates, N counts trials → Tasks 1, 8. ✓
 - Reading-fork explicit decision → Task 11. ✓
