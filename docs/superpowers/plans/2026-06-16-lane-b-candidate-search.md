@@ -74,6 +74,26 @@ than the floor on the exact axis the floor already fixed. Fix:
   touch *burns* the shared tail; a PASSED candidate cannot be promoted on the peeked tail —
   re-pre-registration (Plans 1b/3) must reserve a fresh holdout (e.g. extended/rolled fixture).
 
+### Amendment F3 (HIGH) — golden replication must prove mirror == frozen element-wise
+
+`abs=0.01` on a 0.732 aggregate Sharpe (~1.4% relative) can hide a one-line mirror divergence,
+conflates a legit floor change with a mirror bug, and never exercises the value 270-row NaN
+prefix / empty-`pos` percentile-fit path (`continuous_signals.py:26-31`). Fix Task 4:
+
+- **Add an element-wise equality test (the real drift guard):** with `raw_fn=raw_metric`,
+  `run_dev_sweep_ext(panel, fams)` must equal frozen `run_dev_sweep(panel, fams)` — assert
+  `fold_deltas` equal (exact), `pd.testing.assert_series_equal` on `ensemble_test_returns` and
+  `best_family_test_returns`, and equal `chosen_weights`. This goes red the moment EITHER
+  pipeline changes without the other — independent of any hardcoded number.
+- Keep the 0.732/0.828 assertion as a *documentation* check of the published numbers, but it is
+  no longer the trust anchor.
+- **Holdout-mirror equality on SYNTHETIC data only** (Amendment F2): a `run_holdout_ext` vs
+  `run_holdout` equality check touches the real reserved tail — run it on a synthetic panel, not
+  `floor_prices.csv`.
+- **Add an empty-`pos` value-transform test:** a price window where the formation return is ≥0
+  everywhere → `fit_percentile_transform` gets empty `pos` → value scores flat (0), no crash —
+  proving the degenerate path the golden families never hit is handled.
+
 <!-- amendments-end -->
 
 ---
@@ -536,13 +556,31 @@ import pytest
 from advisor.backtest.continuous_signals import raw_metric
 from advisor.backtest.prereg import PreRegConfig
 from advisor.backtest.stats import book_sharpe
+from advisor.backtest.pipeline import run_dev_sweep            # frozen (Amendment F3)
 from advisor.research.candidate_pipeline import run_dev_sweep_ext
 
-# Replace with the floor's real loader located in Step 1:
-from advisor.backtest.<floor_fixture_module> import <load_panel>  # noqa
+# Concrete loader (Amendment F7 — no placeholder; the floor's fixture is script-local):
+from pathlib import Path
+def load_floor_panel():
+    return pd.read_csv(Path("apps/quant/advisor/tests/fixtures/floor_prices.csv"),
+                       index_col=0, parse_dates=True)
+
+def test_ext_pipeline_equals_frozen_pipeline_elementwise():
+    # Amendment F3: the REAL trust anchor. With raw_fn=raw_metric the mirror must be
+    # bit-for-bit the frozen pipeline on shared families -> any drift in EITHER goes red.
+    # Dev-only (run_dev_sweep never touches the reserved tail) -> holdout stays blinded.
+    panel = load_floor_panel()
+    cfg = PreRegConfig()
+    ext = run_dev_sweep_ext(panel, ("momentum", "trend"), cfg, raw_fn=raw_metric, holdout_frac=0.2)
+    ref = run_dev_sweep(panel, ("momentum", "trend"), cfg, holdout_frac=0.2)
+    assert ext.fold_deltas == ref.fold_deltas
+    pd.testing.assert_series_equal(ext.ensemble_test_returns, ref.ensemble_test_returns)
+    pd.testing.assert_series_equal(ext.best_family_test_returns, ref.best_family_test_returns)
+    assert ext.chosen_weights == ref.chosen_weights
 
 def test_bench_reproduces_floor_construction_C():
-    panel = <load_panel>()                      # the real 2015-2023 fixture
+    # Documentation check of the published numbers (no longer the trust anchor).
+    panel = load_floor_panel()                  # the real 2015-2023 fixture
     cfg = PreRegConfig()                         # floor's own config (warmup=200)
     res = run_dev_sweep_ext(panel, ("momentum", "trend"), cfg,
                             raw_fn=raw_metric, holdout_frac=0.2)
