@@ -1,0 +1,7 @@
+ticker,period_end,snapshot_date,source,net_income,total_equity,revenue,operating_income,total_debt,depreciation,capex,shares_outstanding,market_cap
+AAPL,2023-09-30,2024-01-15,prototype-alpha-vantage-reference,90,500,950,190,100,35,25,10,850
+AAPL,2023-12-31,2024-04-15,prototype-alpha-vantage-reference,120,550,1100,250,110,42,32,10,950
+AAPL,2023-12-31,2024-05-15,prototype-alpha-vantage-reference,125,555,1100,252,108,42,32,10,960
+AAPL,2024-03-31,2024-07-15,prototype-alpha-vantage-reference,130,600,1200,260,100,45,34,10,1000
+EARLY,2023-12-31,2024-01-15,prototype-yfinance-reference,100,500,1000,200,100,40,30,10,900
+MSFT,2023-12-31,2024-04-15,prototype-yfinance-reference,110,,1050,210,90,40,25,8,920
