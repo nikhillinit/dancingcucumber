@@ -75,8 +75,11 @@ LCB of delta not > 0; total dev book-Sharpe lift < 0.05.
 | 3 | 0 | **7** | 17.4% |
 | 4 | 0 | **7** | 10.0% |
 
-`power_limited = True` (pre-registered floor = 25). The MEDIAN asset has only ~7 positive value
-raw points feeding `fit_percentile_transform` per dev fold (min 0; ~7–17% of test scores fire).
+`power_limited = True`. (Provenance: the `positive_floor = 25` threshold is a `candidate_floor.py`
+code default, NOT a constant frozen in `CANDIDATE_PREREG.md`. The conclusion does not hinge on it
+— the median of **7** is below any defensible floor in the 10–25 range — so "power-limited" is not
+a post-hoc-chosen bar.) The MEDIAN asset has only ~7 positive value raw points feeding
+`fit_percentile_transform` per dev fold (min 0; ~7–17% of test scores fire).
 The Task-4 live-in-every-fold guard checked only `assets[0]` (51 positive — atypical); across all
 30 assets the typical value-leg fit is **thin**. So this `DEV_FAILED` is a **power artifact, not a
 signal refutation** — it does NOT establish "Reading A exhausted," and it does NOT refute classic
