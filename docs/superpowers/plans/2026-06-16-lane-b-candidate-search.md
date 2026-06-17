@@ -16,9 +16,44 @@
 1. **Never modify anything under `backtest/`**, nor `portfolio/allocator.py` / `ensemble_vote` / `allocate` / `risk/limits.py`. The bench *imports* them; it never edits them. `floor_prices.csv` / `PREREG.md` / `UNIVERSE_RULE.md` / `allocator.py` are guard-blocked by `.claude/hooks/guard-frozen-floor.mjs`.
 2. **Never weaken the release gate.** `npm run advisor-gate` stays exit 0; `node tools/run-floor.mjs --enforce` stays **exit 1**. This plan adds report-only research code; it does not size capital and does not promote a candidate.
 3. **No fabricated data.** The bench uses only the existing `floor_prices.csv` (Reading A). Missing/NaN signal → flat (0), never synthesized. Reading B (fundamentals fixture) is gated behind an explicit operator decision (Task 11) and is NOT built here.
-4. **Pre-commit methodology, not outcomes.** `value_skip`, `value_lookback`, the family set + order, `orthogonality_tau`, and `declared_trials_N` are frozen in `CandidatePreReg` + `CANDIDATE_PREREG.md` BEFORE any result is seen. The floor's existing gates (§7.2 `ensemble>best_family` LCB>0, §7.1 beat-SPY by margin, DSR>0.95) **are** the acceptance bar — no new outcome thresholds invented. Each additional lookback/family-set tried increments `declared_trials_N` and re-runs DSR at the higher N.
+4. **Pre-commit methodology, not outcomes.** `value_skip`, `value_lookback`, the family set + order, `orthogonality_tau`, and `declared_trials_N` are frozen in `CandidatePreReg` + `CANDIDATE_PREREG.md` BEFORE any result is seen. The floor's existing gates (§7.2 `ensemble>best_family` LCB>0, §7.1 beat-SPY by margin, DSR>0.95) **are** the acceptance bar — no new outcome thresholds invented. Each additional lookback/family-set tried increments `declared_trials_N` **on `CandidateValidationPreReg`** (the surface `validation_report` actually reads — Amendment F1) and re-runs DSR at the higher N.
 5. **Holdout-leakage guard.** `floor_prices.csv`'s tail IS the reserved holdout. The value signal is constructed/tuned on the dev split only; `holdout_frac` is applied identically to the floor; the holdout is touched **once, iff** the dev gate passes.
 6. **Do NOT add fields to `PreRegConfig`** (frozen, SHA-hashed `1ad2ed4a…`). All candidate config lives in the new `CandidatePreReg`.
+
+---
+
+## Debate-hardening amendments (2026-06-17 — authoritative deltas)
+
+> These override the task bodies below where they conflict. Each came from the Hermes
+> adversarial debate and was verified against the frozen code; rationale + file:line in
+> `docs/superpowers/plans/2026-06-16-lane-b-debate-findings.md`. Apply them as part of the
+> task they name.
+
+### Amendment F1 (CRITICAL) — candidate DSR must use a candidate validation surface
+
+`validation_report(returns, family_returns, vcfg, ...)` reads `vcfg.declared_trials_N` /
+`vcfg.declared_var_sr` ONLY (`backtest/validation.py:123,126`). Task 7 passing the floor's
+`DEFAULT_VALIDATION` makes `CandidatePreReg.declared_trials_N` a **dead field**, and rail #4's
+"increment `declared_trials_N`, re-run DSR at higher N" **unimplementable**. Fix:
+
+- Add `apps/quant/advisor/research/candidate_validation_prereg.py` — a frozen
+  `CandidateValidationPreReg` (its OWN hash surface; never touches `ValidationPreReg`) with
+  `declared_trials_N` (the candidate's pre-registered trial count — primary=45; the secondary
+  `value+momentum+trend` run bumps it) and `declared_var_sr` **recalibrated** from the
+  candidate's own per-obs trial Sharpes (or, if reused as `1e-4`, a one-line written
+  justification that 1e-4 ≥ the candidate book's measured cross-trial dispersion, i.e.
+  stricter — `SR0 ∝ √var_sr`). `DEFAULT_CANDIDATE_VALIDATION = CandidateValidationPreReg()`.
+- Task 7 `candidate_metrics` imports and passes `DEFAULT_CANDIDATE_VALIDATION` to
+  `validation_report` (NOT `DEFAULT_VALIDATION`).
+- New test (Task 7): `dataclasses.replace(DEFAULT_CANDIDATE_VALIDATION, declared_trials_N=90)`
+  fed through `candidate_metrics` changes `validation["n_used"]` (proves the field is live).
+- **Keep validation report-only (floor-faithful):** do NOT fold DSR into the machine
+  `passes` — `data_floor.py:74` sets `passes = verdict=="PASSED"` and the `"validation"`
+  key never mutates the verdict. DSR-confirmation stays the operator promotion-readiness gate
+  (Task 8 Step 3 / Task 9), exactly as the floor treats it. Rail #4's "increment N" now points
+  at `CandidateValidationPreReg`.
+
+<!-- amendments-end -->
 
 ---
 
@@ -38,6 +73,7 @@ The frozen pipeline is **slice-then-compute**: `_family_scores` runs the raw met
 |---|---|
 | `apps/quant/advisor/research/__init__.py` | Package marker. |
 | `apps/quant/advisor/research/candidate_prereg.py` | `CandidatePreReg` frozen dataclass + `candidate_hash()`; `DEFAULT_CANDIDATE`. The immutable methodology surface. |
+| `apps/quant/advisor/research/candidate_validation_prereg.py` | (Amendment F1) `CandidateValidationPreReg` frozen dataclass + `DEFAULT_CANDIDATE_VALIDATION`. Own hash surface for the candidate's DSR `declared_trials_N` / recalibrated `declared_var_sr`; the live input to `validation_report`. |
 | `apps/quant/advisor/research/candidate_signals.py` | `candidate_raw(family, prices, *, value_skip, value_lookback)` — delegates known families to frozen `raw_metric`; adds `value` (long-term reversal). |
 | `apps/quant/advisor/research/candidate_pipeline.py` | `run_dev_sweep_ext` / `run_holdout_ext` — frozen pipeline mirrored with an injected `raw_fn`. Reuses all frozen helpers. |
 | `apps/quant/advisor/research/orthogonality.py` | `dev_fold_raw_corr(...)` — Pearson corr of `value` raw vs `long_momentum` / `mean_reversion` on dev folds (holdout excluded). |
@@ -711,7 +747,7 @@ from advisor.backtest.splits import purged_splits
 from advisor.backtest.stats import block_bootstrap_diff_lcb, book_sharpe
 from advisor.backtest.universe import classify_universe
 from advisor.backtest.validation import validation_report
-from advisor.backtest.validation_prereg import DEFAULT_VALIDATION
+from advisor.research.candidate_validation_prereg import DEFAULT_CANDIDATE_VALIDATION  # Amendment F1
 from advisor.research.candidate_prereg import CandidatePreReg
 from advisor.research.candidate_pipeline import run_dev_sweep_ext, run_holdout_ext
 from advisor.research.candidate_signals import candidate_raw
@@ -767,7 +803,7 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
         sweep.ensemble_test_returns,
         {"ensemble": sweep.ensemble_test_returns,
          "best_family": sweep.best_family_test_returns},
-        DEFAULT_VALIDATION,
+        DEFAULT_CANDIDATE_VALIDATION,   # Amendment F1: candidate's own N/var_sr, not the floor's
     )
     return {
         "verdict": verdict, "universe": universe,
