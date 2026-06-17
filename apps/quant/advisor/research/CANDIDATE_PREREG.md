@@ -32,6 +32,18 @@ exit 1 regardless of anything recorded here (promotion is out of scope — Plans
 - `declared_trials_N = 45` **on `CandidateValidationPreReg`** (the surface `validation_report`
   reads — Amendment F1); the secondary run bumps it.
 
+## Implementation-faithfulness disclosure (one intentional divergence from the floor)
+
+The bench mirrors the frozen floor EXACTLY **except** one item: the weight-selector family
+allowlist is extended to admit the pre-registered `value` family. Frozen
+`backtest/blend.py::select_weights` hard-rejects any family not in `RAW_METRICS`, which predates
+`value`; the bench mirrors that selector in `research/candidate_blend.py` with the guard relaxed
+to `RAW_METRICS | {value}`. This is a registry-membership check, NOT part of the selection
+algorithm or any acceptance gate — the Rule A/B selection math, the dev gate, §7.1/§7.2, and DSR
+are byte-identical, and equivalence on the shared (`momentum`,`trend`) families is PROVEN by the
+Task-4 golden equality test. `value` is price-derived and pre-registered, so relative to the
+frozen registry it is "unknown", not "non-price". The frozen `blend.py` is untouched.
+
 ## Task-6 orthogonality kill-gate — PRE-REGISTERED DECISION RULE (Amendment F4)
 
 The blend uses the **post-transform** long-flat conviction scores (`apply_transform`; raw ≤0 →

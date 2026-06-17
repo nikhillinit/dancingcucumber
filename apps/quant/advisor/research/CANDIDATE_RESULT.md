@@ -4,6 +4,12 @@ Methodology + gate rule were FROZEN in `CANDIDATE_PREREG.md` (commit `ac8b5c2`) 
 this measurement. `candidate_hash = 578cce4b…69d1d`; fixture SHA-256 `d40b9959…30e2c1`
 (`apps/quant/advisor/tests/fixtures/floor_prices.csv`, (2264, 31) = SPY + 30 assets).
 
+> **Faithfulness disclosure:** the bench mirrors the floor exactly except the weight-selector
+> family allowlist admits the pre-registered `value` family (`research/candidate_blend.py`,
+> `RAW_METRICS | {value}`); frozen `blend.py::select_weights` rejects unknown families. Selection
+> math, gates, and DSR are unchanged; equivalence on shared families is proven by the Task-4
+> golden. See `CANDIDATE_PREREG.md` → "Implementation-faithfulness disclosure".
+
 ## Task 6 — orthogonality kill-gate (real fixture, dev folds only; holdout untouched)
 
 `value(skip=126, lookback=270)` vs neighbors, pooled over dev test folds + assets:

@@ -5,13 +5,16 @@ from typing import Callable
 
 import pandas as pd
 
-from advisor.backtest.blend import select_weights
 from advisor.backtest.book import book_returns
 from advisor.backtest.continuous_signals import apply_transform, fit_percentile_transform
 from advisor.backtest.portfolio import build_long_flat_book
 from advisor.backtest.prereg import PreRegConfig
 from advisor.backtest.splits import purged_splits
 from advisor.backtest.stats import book_sharpe
+# Bench-mirrored selector: identical to frozen blend.select_weights EXCEPT it admits the
+# pre-registered `value` family (frozen RAW_METRICS rejects it). Equal on shared families
+# (proven by Task-4 golden). The frozen blend.py is untouched.
+from advisor.research.candidate_blend import select_weights
 
 RawFn = Callable[[str, pd.Series], pd.Series]
 
