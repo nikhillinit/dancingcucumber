@@ -68,10 +68,13 @@ def test_bench_reproduces_floor_construction_C():
     assert all(d < 0 for d in res.fold_deltas)       # every fold delta negative
 
 
-def test_value_leg_is_live_in_every_dev_fold():
-    # Feasibility guard (rail #5): the pre-registered value_lookback must leave a
-    # non-degenerate positive-value training set in EVERY dev fold on the real fixture,
-    # else the dev gate is rigged to fail for non-signal reasons.
+def test_value_leg_is_not_globally_dead_in_any_dev_fold():
+    # Feasibility guard (rail #5) measured ACROSS THE ASSET UNIVERSE (review fix — the prior
+    # version asserted an all-fold claim from a single, atypical asset). On the real fixture
+    # the pre-registered value_lookback must leave a non-degenerate positive-value training set
+    # in EVERY dev fold, else the dev gate is rigged to fail for non-signal reasons. This is the
+    # FEASIBILITY floor only; per-asset SUFFICIENCY (the MEDIAN asset is thin, ~7 positive pts)
+    # is measured by the Amendment-F6 power report in candidate_metrics, NOT asserted here.
     from advisor.backtest.splits import purged_splits
     from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C
     from advisor.research.candidate_signals import VALUE, candidate_raw
@@ -79,11 +82,14 @@ def test_value_leg_is_live_in_every_dev_fold():
     assets = [c for c in panel.columns if c != "SPY"]
     prices_all = panel[assets].iloc[C.warmup:].reset_index(drop=True)
     dev = prices_all.iloc[:int(len(prices_all) * 0.8)]
-    val = candidate_raw(VALUE, dev[assets[0]], value_skip=C.value_skip,
-                        value_lookback=C.value_lookback)
+    vals = {a: candidate_raw(VALUE, dev[a], value_skip=C.value_skip,
+                             value_lookback=C.value_lookback) for a in assets}
     for train_idx, _ in purged_splits(len(dev), C.folds, C.embargo):
-        live_pos = val.iloc[train_idx].dropna()
-        assert (live_pos > 0).sum() >= 10   # non-degenerate percentile fit per fold
+        per_asset_pos = [int((vals[a].iloc[train_idx].dropna() > 0).sum()) for a in assets]
+        assert sum(per_asset_pos) > 0                   # fold is not GLOBALLY dead
+        assert max(per_asset_pos) >= 10                 # >=1 asset has a usable percentile fit
+        median_pos = sorted(per_asset_pos)[len(per_asset_pos) // 2]
+        assert median_pos >= 1                          # live (but thin — see F6 power report)
 
 
 def test_value_transform_handles_empty_pos_without_crash():

@@ -32,17 +32,27 @@ exit 1 regardless of anything recorded here (promotion is out of scope — Plans
 - `declared_trials_N = 45` **on `CandidateValidationPreReg`** (the surface `validation_report`
   reads — Amendment F1); the secondary run bumps it.
 
-## Implementation-faithfulness disclosure (one intentional divergence from the floor)
+## Implementation-faithfulness disclosure (intentional divergences from the floor)
 
-The bench mirrors the frozen floor EXACTLY **except** one item: the weight-selector family
-allowlist is extended to admit the pre-registered `value` family. Frozen
-`backtest/blend.py::select_weights` hard-rejects any family not in `RAW_METRICS`, which predates
-`value`; the bench mirrors that selector in `research/candidate_blend.py` with the guard relaxed
-to `RAW_METRICS | {value}`. This is a registry-membership check, NOT part of the selection
-algorithm or any acceptance gate — the Rule A/B selection math, the dev gate, §7.1/§7.2, and DSR
-are byte-identical, and equivalence on the shared (`momentum`,`trend`) families is PROVEN by the
-Task-4 golden equality test. `value` is price-derived and pre-registered, so relative to the
-frozen registry it is "unknown", not "non-price". The frozen `blend.py` is untouched.
+The bench mirrors the frozen floor EXACTLY except the three items below. Each is either a
+registry detail or a STRICTER discipline than the floor (never weaker); the selection math, dev
+gate, §7.1/§7.2, and DSR are byte-identical, and equivalence on shared (`momentum`,`trend`)
+families is PROVEN by the Task-4 golden equality test. The frozen `backtest/` is untouched.
+
+1. **Weight-selector family allowlist.** Frozen `blend.py::select_weights` hard-rejects any family
+   not in `RAW_METRICS`, which predates `value`; the bench mirrors that selector in
+   `research/candidate_blend.py` with the guard relaxed to `RAW_METRICS | {value}`. This is a
+   registry-membership check, NOT selection logic or any gate. `value` is price-derived and
+   pre-registered, so relative to the frozen registry it is "unknown", not "non-price".
+2. **Verified holdout unlock (STRICTER — review F2).** Frozen `data_floor.py:34` unlocks the tail
+   on ANY non-null `prereg_hash`; the bench (`candidate_floor._verify_holdout_unlock`) unlocks ONLY
+   when `prereg_hash == candidate_run_hash(cfg, fixture_path)` (config + fixture bytes) and RAISES
+   on a supplied-but-wrong hash, honoring the `HOLDOUT_LEDGER.md` contract on the shared tail.
+3. **Dev-only SPY when blinded (STRICTER — review F1).** Frozen `data_floor.py:31` computes the
+   legacy SPY benchmark over the full post-warmup series even on a DEV_FAILED; the bench computes it
+   over the DEV window only when the holdout is blinded, so the no-holdout path genuinely never reads
+   the reserved tail (proven by a mutate-the-tail invariance test). When the holdout IS unlocked,
+   SPY is the holdout SPY exactly as the floor does.
 
 ## Task-6 orthogonality kill-gate — PRE-REGISTERED DECISION RULE (Amendment F4)
 
