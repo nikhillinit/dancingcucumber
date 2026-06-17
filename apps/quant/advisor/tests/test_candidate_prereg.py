@@ -1,6 +1,8 @@
 from advisor.research.candidate_prereg import (
-    CandidatePreReg, DEFAULT_CANDIDATE, candidate_hash,
+    CandidatePreReg, DEFAULT_CANDIDATE, candidate_hash, candidate_run_hash,
 )
+
+FIXTURE = "apps/quant/advisor/tests/fixtures/floor_prices.csv"
 
 def test_default_candidate_freezes_methodology():
     c = DEFAULT_CANDIDATE
@@ -26,3 +28,14 @@ def test_candidate_hash_is_stable_and_sensitive():
     # Any methodology change must re-hash (no silent p-hacking).
     mutated = dataclasses.replace(DEFAULT_CANDIDATE, value_lookback=1260)
     assert candidate_hash(mutated) != h0
+
+def test_candidate_run_hash_binds_config_and_fixture_bytes():
+    import dataclasses
+    # Amendment F2: the holdout-unlock key includes fixture bytes (mirrors config_hash).
+    h0 = candidate_run_hash(DEFAULT_CANDIDATE, FIXTURE)
+    assert isinstance(h0, str) and len(h0) == 64
+    # It is NOT the fixture-blind methodology id.
+    assert h0 != candidate_hash(DEFAULT_CANDIDATE)
+    # A config change must re-hash (no silent re-spec after seeing the holdout).
+    mutated = dataclasses.replace(DEFAULT_CANDIDATE, value_lookback=126)
+    assert candidate_run_hash(mutated, FIXTURE) != h0

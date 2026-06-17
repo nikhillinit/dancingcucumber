@@ -16,8 +16,12 @@ def _dev_frame(panel: pd.DataFrame, warmup: int, holdout_frac: float):
 
 
 def _corr(a: np.ndarray, b: np.ndarray, method: str) -> float:
+    # Degenerate (empty overlap, or a constant/all-flat leg) -> correlation is UNDEFINED.
+    # Return NaN, not 0.0: a dead value leg is not "perfectly orthogonal", and the gate
+    # must be able to detect the degeneracy rather than read a false PASS (the F6 power
+    # report is the independent firing/coverage check).
     if a.size == 0 or b.size == 0 or a.std() == 0 or b.std() == 0:
-        return 0.0
+        return float("nan")
     if method == "spearman":
         a = pd.Series(a).rank().to_numpy()
         b = pd.Series(b).rank().to_numpy()
