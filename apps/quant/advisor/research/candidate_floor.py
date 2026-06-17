@@ -8,7 +8,7 @@ from advisor.backtest.splits import purged_splits
 from advisor.backtest.stats import block_bootstrap_diff_lcb, book_sharpe
 from advisor.backtest.universe import classify_universe
 from advisor.backtest.validation import validation_report
-from advisor.research.candidate_prereg import CandidatePreReg
+from advisor.research.candidate_prereg import CandidatePreReg, candidate_run_hash
 from advisor.research.candidate_pipeline import run_dev_sweep_ext, run_holdout_ext
 from advisor.research.candidate_signals import VALUE, candidate_raw
 from advisor.research.candidate_validation_prereg import (
@@ -52,13 +52,34 @@ def _value_power_report(panel: pd.DataFrame, cfg: CandidatePreReg, holdout_frac:
     return {"folds": folds, "power_limited": power_limited, "positive_floor": positive_floor}
 
 
+def _verify_holdout_unlock(cfg: CandidatePreReg, prereg_hash: str | None,
+                           fixture_path) -> bool:
+    """F2 (review hardening, STRICTER than frozen data_floor.py:34): the reserved tail
+    unlocks ONLY when `prereg_hash` equals `candidate_run_hash(cfg, fixture_path)` (config +
+    fixture bytes) — a non-null string is NOT enough, matching the `HOLDOUT_LEDGER.md`
+    contract. Returns True iff a verified run-hash was supplied; RAISES on a supplied-but-wrong
+    hash so a careless caller cannot silently touch (and burn) the shared reserved tail."""
+    if prereg_hash is None:
+        return False
+    if fixture_path is None or prereg_hash != candidate_run_hash(cfg, fixture_path):
+        raise ValueError(
+            "holdout unlock requires prereg_hash == candidate_run_hash(cfg, fixture_path); "
+            "refusing to evaluate the reserved tail with an unverified run-hash"
+        )
+    return True
+
+
 def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
                       prereg_hash: str | None = None, holdout_frac: float = 0.2,
-                      vcfg: CandidateValidationPreReg = DEFAULT_CANDIDATE_VALIDATION) -> dict:
+                      vcfg: CandidateValidationPreReg = DEFAULT_CANDIDATE_VALIDATION,
+                      fixture_path=None) -> dict:
     """Candidate bench mirror of floor_metrics: dev gate first, one blinded holdout.
     Report-only; never authorizes sizing; frozen floor untouched. Validation uses the
     CANDIDATE's own N/var_sr surface (Amendment F1, NOT the floor's DEFAULT_VALIDATION),
-    stays report-only (never folded into `passes`); a F6 power block labels thin fits."""
+    stays report-only (never folded into `passes`); a F6 power block labels thin fits.
+    The reserved tail is touched ONLY iff the dev gate passes AND `prereg_hash` is a verified
+    `candidate_run_hash(cfg, fixture_path)` (review F2); when blinded, even the SPY benchmark is
+    computed over the DEV window only so the tail is genuinely never read (review F1)."""
     families = cfg.families
 
     def raw_fn(family: str, prices: pd.Series) -> pd.Series:
@@ -77,10 +98,16 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
 
     holdout = None
     verdict = "DEV_FAILED"
-    legacy_spy = book_sharpe(panel["SPY"].iloc[cfg.warmup:].pct_change().fillna(0.0))
+    # Review F1 (STRICTER than frozen data_floor.py:31, which uses the full post-warmup
+    # series): when the holdout is blinded, compute the SPY benchmark over the DEV window
+    # ONLY, so the reserved tail is never read on the no-holdout path. If the holdout is
+    # unlocked below, legacy_spy is reassigned to the holdout SPY.
+    spy_all = panel["SPY"].iloc[cfg.warmup:].reset_index(drop=True)
+    spy_dev_end = int(len(spy_all) * (1 - holdout_frac))
+    legacy_spy = book_sharpe(spy_all.iloc[:spy_dev_end].pct_change().fillna(0.0))
     if universe == "do_not_run":
         verdict = "UNSUPPORTED"
-    elif gate.passed and prereg_hash is not None:
+    elif gate.passed and _verify_holdout_unlock(cfg, prereg_hash, fixture_path):
         h = run_holdout_ext(panel, families, cfg, sweep.chosen_weights,
                             raw_fn=raw_fn, holdout_frac=holdout_frac)
         delta_lcb = block_bootstrap_diff_lcb(h.ensemble, h.best_family, cfg.bootstrap_block,

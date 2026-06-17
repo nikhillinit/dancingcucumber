@@ -16,7 +16,12 @@ class CandidatePreReg:
     value_skip: int = 126                 # skip recent 6mo -> excludes momentum window
     value_lookback: int = 270             # ~13mo->6mo formation; FIXTURE-FEASIBLE (< ~325)
     orthogonality_tau: float = 0.40       # max |Pearson corr| of value vs LM / MR on dev
-    declared_trials_N: int = 45           # DSR multiple-testing N (>= MinBTL budget 45)
+    declared_trials_N: int = 45           # VESTIGIAL — the LIVE DSR trial count is
+                                          # CandidateValidationPreReg.declared_trials_N (the
+                                          # surface validation_report reads, Amendment F1). This
+                                          # field feeds NOTHING; kept only because removing it
+                                          # would mutate the frozen, recorded candidate_hash
+                                          # after the run. Pinned as a no-op by a regression test.
     # --- inherited from the floor so the bench is faithful (mirror PreRegConfig) ---
     warmup: int = 200
     folds: int = 5

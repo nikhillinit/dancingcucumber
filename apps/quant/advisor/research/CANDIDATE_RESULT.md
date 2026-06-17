@@ -4,11 +4,12 @@ Methodology + gate rule were FROZEN in `CANDIDATE_PREREG.md` (commit `ac8b5c2`) 
 this measurement. `candidate_hash = 578cce4b…69d1d`; fixture SHA-256 `d40b9959…30e2c1`
 (`apps/quant/advisor/tests/fixtures/floor_prices.csv`, (2264, 31) = SPY + 30 assets).
 
-> **Faithfulness disclosure:** the bench mirrors the floor exactly except the weight-selector
-> family allowlist admits the pre-registered `value` family (`research/candidate_blend.py`,
-> `RAW_METRICS | {value}`); frozen `blend.py::select_weights` rejects unknown families. Selection
-> math, gates, and DSR are unchanged; equivalence on shared families is proven by the Task-4
-> golden. See `CANDIDATE_PREREG.md` → "Implementation-faithfulness disclosure".
+> **Faithfulness disclosure:** the bench mirrors the floor exactly except three items — (1) the
+> weight-selector allowlist admits the pre-registered `value` family; (2) STRICTER holdout unlock
+> (verified `candidate_run_hash`, not any non-null string — review F2); (3) STRICTER dev-only SPY
+> when blinded so the tail is never read (review F1). Selection math, gates, and DSR are unchanged;
+> equivalence on shared families proven by the Task-4 golden. See `CANDIDATE_PREREG.md` →
+> "Implementation-faithfulness disclosure".
 
 ## Task 6 — orthogonality kill-gate (real fixture, dev folds only; holdout untouched)
 
@@ -59,12 +60,14 @@ chose Option 1 (build to the dev gate, pause before any holdout burn).
 | universe | formal |
 | weights (Rule A) | value 0.50 / momentum 0.50 (no Rule B grid deviation cleared) |
 | fold_deltas | [+0.0063, −0.0185, +0.124, −0.1637] (50% positive < 70%; median < 0) |
-| ensemble Sharpe | 0.662 vs best-family 0.668 → ensemble does NOT beat its best part (§7.2) |
-| ensemble vs SPY | 0.662 vs 0.756 → does not beat SPY |
+| ensemble Sharpe | 0.662 vs best-family 0.668 → ensemble does NOT beat its best part (§7.2) — the only outcome the dev gate actually adjudicates |
+| ensemble vs SPY (dev-only) | 0.662 vs SPY 0.752 (DEV window only — review F1; informational, not a dev-gate input) |
 | DSR (report-only) | 0.755 < 0.95 at N=45 (per-obs Sharpe 0.042) |
 
 dev gate reasons: median fold delta not > 0; fewer than 70% positive folds; dev 90% bootstrap
-LCB of delta not > 0; total dev book-Sharpe lift < 0.05.
+LCB of delta not > 0; total dev book-Sharpe lift < 0.05. (The beat-SPY §7.1 check runs ONLY at the
+holdout stage, which never ran — so the SPY number above is the floor's informational legacy field,
+computed over the DEV window only, NOT a verdict input.)
 
 ### Amendment-F6 power/sufficiency report — the verdict is POWER-LIMITED, not a clean refutation
 
