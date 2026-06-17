@@ -44,14 +44,57 @@ the diversification hypothesis survives the kill-gate, and **§7.2 on the real f
 adjudicator** (a correlated long-only blend can't beat its best member — plan4 — but a genuinely
 orthogonal one might; that is the whole hypothesis, to be tested honestly in Phase B2).
 
-## Next (per §5 FORK, PASS branch) — pending operator go-ahead at the §9 checkpoint
+Phase B2 was built (T3 mirror → T4 golden, proven faithful → T7 candidate_floor) and the
+dev gate was run **report-only with the holdout BLINDED** (`prereg_hash=None`). The operator
+chose Option 1 (build to the dev gate, pause before any holdout burn).
 
-Proceed to build Phase B2 in order, fail-fast, golden BEFORE any holdout eval:
-`T3 candidate_pipeline → T4 golden + element-wise equality (MANDATORY) → T7 candidate_floor
-(F1/F2/F6) → T8 pre-register + RUN eval → T9 decision`.
+## Phase B2 — dev-gate result (real fixture, holdout NEVER touched)
 
-**Consequential step flagged:** Task 8 touches the shared reserved holdout **once, iff the dev
-gate passes** (rail #5), unlocked only by `candidate_run_hash(cfg, fixture)` and logged to
-`HOLDOUT_LEDGER.md`. That touch **burns** the shared reserved tail — a passing candidate could
-NOT then be promoted on the peeked tail; promotion (Plans 1b/3) would require a FRESH holdout
-(Amendment F2). The frozen floor stays `DEV_FAILED` / `--enforce` exit 1 regardless.
+`candidate_metrics(panel, DEFAULT_CANDIDATE, prereg_hash=None)` on `floor_prices.csv`:
+
+| Field | Value |
+|---|---|
+| **verdict** | **DEV_FAILED** |
+| holdout_touched | **false** (reserved tail pristine — rail #5: touched only iff dev passes) |
+| universe | formal |
+| weights (Rule A) | value 0.50 / momentum 0.50 (no Rule B grid deviation cleared) |
+| fold_deltas | [+0.0063, −0.0185, +0.124, −0.1637] (50% positive < 70%; median < 0) |
+| ensemble Sharpe | 0.662 vs best-family 0.668 → ensemble does NOT beat its best part (§7.2) |
+| ensemble vs SPY | 0.662 vs 0.756 → does not beat SPY |
+| DSR (report-only) | 0.755 < 0.95 at N=45 (per-obs Sharpe 0.042) |
+
+dev gate reasons: median fold delta not > 0; fewer than 70% positive folds; dev 90% bootstrap
+LCB of delta not > 0; total dev book-Sharpe lift < 0.05.
+
+### Amendment-F6 power/sufficiency report — the verdict is POWER-LIMITED, not a clean refutation
+
+| fold | min positive-train | **median positive-train** | nonzero-transformed coverage |
+|---|---:|---:|---:|
+| 1 | 0 | **7** | 7.2% |
+| 2 | 0 | **7** | 12.3% |
+| 3 | 0 | **7** | 17.4% |
+| 4 | 0 | **7** | 10.0% |
+
+`power_limited = True` (pre-registered floor = 25). The MEDIAN asset has only ~7 positive value
+raw points feeding `fit_percentile_transform` per dev fold (min 0; ~7–17% of test scores fire).
+The Task-4 live-in-every-fold guard checked only `assets[0]` (51 positive — atypical); across all
+30 assets the typical value-leg fit is **thin**. So this `DEV_FAILED` is a **power artifact, not a
+signal refutation** — it does NOT establish "Reading A exhausted," and it does NOT refute classic
+LT-reversal or fundamental value (both fixture-infeasible here).
+
+## Decision (Task 9)
+
+- **Clean, documented NEGATIVE — power-limited.** The `value(270)+momentum` blend does not clear
+  the dev gate on this 9-yr price-only fixture, but the F6 power report shows the value percentile
+  fit is too thin (median 7 positive train points/fold vs a 25 floor) to call it a genuine signal
+  verdict. Reading A (price-only intermediate reversal) is **inconclusive for power reasons**.
+- **Holdout untouched / NOT burned.** Dev failed, so rail #5 never unlocked the reserved tail;
+  `HOLDOUT_LEDGER.md` stays empty. The shared reserved tail remains pristine for a future
+  fresh-holdout promotion (Plans 1b/3). No burn decision was required.
+- **Frozen floor unchanged.** `npm run advisor-gate` exit 0 (floor `DEV_FAILED`);
+  `node tools/run-floor.mjs --enforce` exit 1. No promotion; `allocator.py`/`ensemble_vote` never
+  called. The bench is report-only throughout.
+- **Recommended next investment: Reading B** (`Task 11` stub) — fundamental value with a timely
+  price leg, genuinely orthogonal to price-momentum and not power-starved on a price-only fixture.
+  This is the memory's actual lead (`deep-research-orthogonal-signals`) and the right follow-on to
+  a power-limited Reading-A negative (Amendment F6 / Task 8 caveat).
