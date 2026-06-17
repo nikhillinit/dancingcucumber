@@ -10,10 +10,14 @@ validation["passes"], so a deflation-failing candidate cannot be released. This 
 deliberate step that turns the report-only guard into a blocking one; deferred so the
 current accepted DEV_FAILED floor is not disturbed.
 
-Plan 2 — Workstream C completion. Wire the full five-family run_pipeline into the
-CLI (value/quality, momentum, trend, macro, sentiment) with provider adapters and
-fake-provider tests. Prerequisite for ALL candidate-family work. See
-docs/superpowers/plans/2026-06-15-followups-handoff.md.
+Plan 2 — Workstream C completion. DONE (unit/fake path, report-only). The five-family
+run_pipeline is wired into the CLI via `--families all` with FRED + composite/Alpha
+Vantage adapters, a deterministic lexicon news scorer, and async family-coro factories;
+every adapter is as-of bounded and degrades to FamilySignal.neutral on missing
+input/error (no fabrication, spec section 10). Floor UNTOUCHED: advisor-gate exit 0,
+`run-floor --enforce` exit 1. DEFERRED: the live multi-source smoke (real FRED_API_KEY +
+ALPHAVANTAGE_API_KEY) and adding Finnhub/NewsAPI to the composite - both are operator
+steps, not in the pytest gate. See docs/superpowers/plans/2026-06-16-workstream-c.md.
 
 Plan 3 — Post-C signal program (write ONLY after C lands AND a candidate exists):
 registry, append-only evidence ledger (separate from checkpoint upsert), report-only
@@ -22,3 +26,8 @@ diagnostics, dormant eligibility report, and a later separate skill_weight activ
 plan. Do NOT pre-commit forward thresholds (windows, observation counts, Brier lifts)
 until that plan is written against real constraints. SESTM/news sentiment stays
 research-only/conditional for the large-cap book.
+
+Status note (post-C): Plan 1b (wire validation["passes"] into --enforce) and Plan 3
+(post-C signal program) are now unblocked-by-prerequisite (C provides the live
+five-family path) but remain gated on a real candidate that clears dev. Do not start
+either until such a candidate exists; the accepted DEV_FAILED floor stays undisturbed.
