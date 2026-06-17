@@ -17,7 +17,7 @@
 2. **Never weaken the release gate.** `npm run advisor-gate` stays exit 0; `node tools/run-floor.mjs --enforce` stays **exit 1**. This plan adds report-only research code; it does not size capital and does not promote a candidate.
 3. **No fabricated data.** The bench uses only the existing `floor_prices.csv` (Reading A). Missing/NaN signal → flat (0), never synthesized. Reading B (fundamentals fixture) is gated behind an explicit operator decision (Task 11) and is NOT built here.
 4. **Pre-commit methodology, not outcomes.** `value_skip`, `value_lookback`, the family set + order, `orthogonality_tau`, and `declared_trials_N` are frozen in `CandidatePreReg` + `CANDIDATE_PREREG.md` BEFORE any result is seen. The floor's existing gates (§7.2 `ensemble>best_family` LCB>0, §7.1 beat-SPY by margin, DSR>0.95) **are** the acceptance bar — no new outcome thresholds invented. Each additional lookback/family-set tried increments `declared_trials_N` **on `CandidateValidationPreReg`** (the surface `validation_report` actually reads — Amendment F1) and re-runs DSR at the higher N.
-5. **Holdout-leakage guard.** `floor_prices.csv`'s tail IS the reserved holdout. The value signal is constructed/tuned on the dev split only; `holdout_frac` is applied identically to the floor; the holdout is touched **once, iff** the dev gate passes.
+5. **Holdout-leakage guard.** `floor_prices.csv`'s tail IS the reserved holdout. The value signal is constructed/tuned on the dev split only; `holdout_frac` is applied identically to the floor; the holdout is touched **once, iff** the dev gate passes. **(Amendment F2)** Unlock the tail only via a `candidate_run_hash(cfg, fixture)` over config **+ fixture bytes** (not the fixture-blind `candidate_hash`); append every reserved-tail touch to a shared `HOLDOUT_LEDGER.md`; a side-bench touch BURNS the shared tail, so promotion (Plans 1b/3) requires a FRESH holdout, never the peeked one.
 6. **Do NOT add fields to `PreRegConfig`** (frozen, SHA-hashed `1ad2ed4a…`). All candidate config lives in the new `CandidatePreReg`.
 
 ---
@@ -53,6 +53,27 @@
   (Task 8 Step 3 / Task 9), exactly as the floor treats it. Rail #4's "increment N" now points
   at `CandidateValidationPreReg`.
 
+### Amendment F2 (CRITICAL) — control reuse of the shared reserved holdout
+
+`floor_prices.csv`'s tail IS the floor's reserved holdout (`FLOOR_RESULT.md:32` "do NOT run
+it … reserved"). The floor already hardened this (`tools/floor_data_check.py:63-71`, its own
+"debate finding #1"): the tail unlocks ONLY via `config_hash(DEFAULT_CONFIG, FIXTURE)`, which
+**includes fixture bytes**. The plan's `candidate_hash()` deliberately EXCLUDES fixture bytes,
+and `candidate_metrics` unlocks the holdout on any `prereg_hash is not None` — strictly weaker
+than the floor on the exact axis the floor already fixed. Fix:
+
+- **Candidate run-hash over config + fixture bytes.** Add `candidate_run_hash(cfg, fixture_path)`
+  (mirror `config_hash(cfg, FIXTURE)`) and use ITS output as the `prereg_hash` that unlocks the
+  holdout in Task 8 — never the fixture-blind `candidate_hash()` and never an arbitrary string.
+  (`candidate_hash()` stays the methodology-only id in `CANDIDATE_PREREG.md`.)
+- **Shared holdout-touch ledger.** Add `apps/quant/advisor/research/HOLDOUT_LEDGER.md`, an
+  append-only record; EVERY evaluation of the reserved tail (the floor's own future `--holdout`
+  run AND every candidate that earns a holdout) appends a row: date, run-hash, families,
+  verdict. The ledger makes the multiple-testing count on the shared tail honest and visible.
+- **Promotion needs a FRESH holdout.** State (rail #5 + Task 9) that ANY side-bench holdout
+  touch *burns* the shared tail; a PASSED candidate cannot be promoted on the peeked tail —
+  re-pre-registration (Plans 1b/3) must reserve a fresh holdout (e.g. extended/rolled fixture).
+
 <!-- amendments-end -->
 
 ---
@@ -80,6 +101,7 @@ The frozen pipeline is **slice-then-compute**: `_family_scores` runs the raw met
 | `apps/quant/advisor/research/candidate_floor.py` | `candidate_metrics(...)` — mirrors `floor_metrics` (dev gate → holdout-once → §7.1/§7.2 + validation_report) over the candidate pipeline + `CandidatePreReg`. |
 | `apps/quant/advisor/research/CANDIDATE_PREREG.md` | Immutable pre-registration record (hash, frozen constants, candidate order). |
 | `apps/quant/advisor/research/CANDIDATE_RESULT.md` | Measured verdict + evidence (written by the measurement tasks). |
+| `apps/quant/advisor/research/HOLDOUT_LEDGER.md` | (Amendment F2) Append-only ledger of every reserved-tail touch (floor + each candidate): date, run-hash, families, verdict. Makes shared-holdout multiple-testing honest. |
 | `apps/quant/advisor/tests/test_candidate_*.py` | Unit tests (collected by the gate; keep the suite green, count rising). |
 
 ---
@@ -836,7 +858,7 @@ git commit -m "feat(research): candidate_metrics mirrors floor_metrics over the 
 
 - [ ] **Step 1: Write & commit `CANDIDATE_PREREG.md` BEFORE running**
 
-Contents: `candidate_hash(DEFAULT_CANDIDATE)`, the frozen constants (families/order `("value","momentum")`, `value_skip=126`, `value_lookback=270`, `orthogonality_tau=0.40`, `declared_trials_N=45`), the fixture path + SHA, the candidate order (primary: `value+momentum`; pre-registered secondary ONLY if primary dev-passes-but-holdout-fails: `value+momentum+trend`, which increments effective N), and the acceptance bar (the floor's gates verbatim — no new thresholds). Commit before Step 2.
+Contents: `candidate_hash(DEFAULT_CANDIDATE)` (methodology id), `candidate_run_hash(DEFAULT_CANDIDATE, FIXTURE)` (config+fixture — the holdout-unlock key, Amendment F2), the `CandidateValidationPreReg` hash (Amendment F1), the frozen constants (families/order `("value","momentum")`, `value_skip=126`, `value_lookback=270`, `orthogonality_tau=0.40`; `declared_trials_N=45` **on `CandidateValidationPreReg`**), the fixture path + SHA, the candidate order (primary: `value+momentum`; pre-registered secondary ONLY if primary dev-passes-but-holdout-fails: `value+momentum+trend`, which increments effective N), and the acceptance bar (the floor's gates verbatim — no new thresholds). Commit before Step 2.
 
 ```bash
 git add apps/quant/advisor/research/CANDIDATE_PREREG.md
