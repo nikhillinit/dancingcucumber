@@ -127,6 +127,21 @@ before Task 8** (no candidate holdout evaluation until the mirror is proven fait
 FAILS, stop at the recorded negative and go to Task 11 (Reading B) — Tasks 3/4/7/8 are never
 built. Update the Execution-handoff section to this order.
 
+### Amendment F6 (MEDIUM) — don't overclaim power on a thin per-fold value fit
+
+On dev≈1654, `purged_splits` (`splits.py:11-25`) gives fold_size≈330 and fold-1 train rows
+`[0, 325)`; `value_lookback=270` leaves ~55 candidate rows there, ~25 positive feeding
+`fit_percentile_transform`. Task 4's `>=10`-positive guard is too weak to prove a STABLE
+percentile fit under `dev_gate`'s median/70%/LCB/lift bars (`dev_gate.py:18-41`) — so a
+`DEV_FAILED` at lookback 270 can be a power artifact, not a signal verdict. The Task 8 caveat
+calling 270 "a genuine signal verdict, not a rigged one" overclaims. Fix:
+
+- Emit a **power/sufficiency report** alongside the verdict (Task 8): per-fold positive-raw
+  count, nonzero-transformed coverage fraction, and effective observations per fold.
+- If coverage is below a pre-registered threshold (e.g. <25 positive train points or
+  <X% nonzero transformed in any fold), the verdict is labeled **power-limited / inconclusive**,
+  NOT "Reading A exhausted." Soften the Task 8 Step-3 caveat to match.
+
 <!-- amendments-end -->
 
 ---
@@ -947,7 +962,7 @@ python -c "from advisor.research.candidate_floor import candidate_metrics; from 
 
 - `verdict == "PASSED"` (dev gate passed AND holdout `beats_parts` AND `beats_spy`) → **a real candidate exists.** Additionally confirm `validation["passes"]` (DSR ≥ 0.95 at N=45) for promotion-readiness. Proceed to Task 9 (promotion path).
 - `verdict in {"DEV_FAILED","INCONCLUSIVE","UNSUPPORTED"}` → **clean negative.** Record it. The holdout was either never touched (DEV_FAILED) or touched once and failed (INCONCLUSIVE). Do NOT retry horizons ad hoc — the only permitted second run is the pre-registered `value+momentum+trend`, and it increments `declared_trials_N` (re-run DSR at the higher N). After the pre-registered set is exhausted, Reading A is concluded.
-- **Scope caveat (record it):** the feasibility fix (Task 1, `value_lookback=270`, verified live in every dev fold by Task 4's guard) means a `DEV_FAILED`/`INCONCLUSIVE` here is a **genuine signal verdict, not a rigged one**. But it tests *intermediate-term* reversal only — a negative does **not** refute classic 36–60mo LT-reversal or fundamental value, both of which are fixture-infeasible here and move to Reading B (Task 11). In practice the cheap kill happens earlier at Task 6 (orthogonality); reaching a clean dev/holdout verdict at all means `value` was decorrelated yet still didn't beat the parts.
+- **Scope caveat (record it):** the feasibility fix (Task 1, `value_lookback=270`, verified live in every dev fold by Task 4's guard) means a `DEV_FAILED`/`INCONCLUSIVE` here is a signal verdict **only if the Amendment-F6 power/sufficiency report clears its pre-registered coverage threshold** — a thin per-fold value fit (~25 positive points in fold 1) can produce a power-limited `DEV_FAILED` that is NOT a clean signal refutation, so label it power-limited and do not claim "Reading A exhausted." But it tests *intermediate-term* reversal only — a negative does **not** refute classic 36–60mo LT-reversal or fundamental value, both of which are fixture-infeasible here and move to Reading B (Task 11). In practice the cheap kill happens earlier at Task 6 (orthogonality); reaching a clean dev/holdout verdict at all means `value` was decorrelated yet still didn't beat the parts.
 
 - [ ] **Step 4: Append results to `CANDIDATE_RESULT.md` and commit**
 
