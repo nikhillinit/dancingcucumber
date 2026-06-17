@@ -113,6 +113,20 @@ heterogeneous assets (plan Task 5) can disagree with that. Fix Tasks 5–6:
   on the real fixture becomes the adjudicator, not a green light. Document `τ=0.40` as a
   pre-filter threshold, not a proof of diversification.
 
+### Amendment F5 (MEDIUM) — reorder the build to fail-fast at the kill-gate
+
+Task 6 (the kill-gate) depends only on Tasks 1+2 (`CandidatePreReg`, `candidate_raw`) +
+`splits.purged_splits` — NOT on the Task 3 mirror or Task 4 golden. The plan's own thesis is
+that value@270 is likely a `long_momentum` relabel that dies cheaply at Task 6 (Design note;
+Task 6 "intended cheap-falsification outcome"). So building the full mirror + golden first is
+avoidable work. **New build order:**
+
+`Task 1 → Task 2 → Task 5 → Task 6 (kill-gate)`. Only **if Task 6 PASSES**, build
+`Task 3 → Task 4 → Task 7 → Task 8`. **Task 4 (golden + element-wise equality) stays MANDATORY
+before Task 8** (no candidate holdout evaluation until the mirror is proven faithful). If Task 6
+FAILS, stop at the recorded negative and go to Task 11 (Reading B) — Tasks 3/4/7/8 are never
+built. Update the Execution-handoff section to this order.
+
 <!-- amendments-end -->
 
 ---
@@ -990,4 +1004,4 @@ Deep-research verdict: PBO/CSCV is **audit-only, medium-confidence, synthetic-va
 
 ## Execution handoff
 
-Plan complete. Recommended path: **subagent-driven-development** for Tasks 1–5 and 7 (TDD code, one Hermes dispatch + commit each), with Tasks 4, 6, 8, 9 run **Claude-direct** (golden-replication + measurements + decision — operator-class, not Hermes). Task 6 is a hard gate: if orthogonality fails, skip Phase B2 and go to Task 11. Tasks 10–11 are gated/optional.
+Plan complete. **Fail-fast build order (Amendment F5):** build `Task 1 → Task 2 → Task 5` (TDD code via subagent-driven-development, one Hermes dispatch + commit each), then run `Task 6` Claude-direct (the kill-gate). **Only if Task 6 PASSES**, build `Task 3 → Task 4 → Task 7` (TDD) and run `Task 8`/`Task 9` Claude-direct; Task 4 (golden + element-wise equality) is mandatory before Task 8. If Task 6 FAILS, record the negative and jump to Task 11 (Reading B) — Tasks 3/4/7/8 are never built. Tasks 4, 6, 8, 9 are operator-class (Claude-direct, not Hermes). Tasks 10–11 are gated/optional.
