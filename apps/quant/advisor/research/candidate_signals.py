@@ -18,6 +18,7 @@ def candidate_raw(family: str, prices: pd.Series, *, value_skip: int = 126,
     `value_lookback` rows (handled downstream as flat); keep `value_lookback` below
     fold-1's train end so no dev fold is dead (see plan horizon note)."""
     if family == VALUE:
+        assert value_lookback > value_skip, "value_lookback must exceed value_skip"
         p = pd.Series(prices).astype(float)
         formation = p.shift(value_skip) / p.shift(value_lookback) - 1.0
         return -formation

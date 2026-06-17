@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,20 @@ DEFAULT_CANDIDATE = CandidatePreReg()
 
 def candidate_hash(cfg: CandidatePreReg) -> str:
     """SHA-256 over the canonical config JSON (no fixture bytes — the bench reuses
-    the floor's fixture, whose hash is recorded separately in CANDIDATE_PREREG.md)."""
+    the floor's fixture, whose hash is recorded separately in CANDIDATE_PREREG.md).
+    This is the methodology-only id; it is NOT the holdout-unlock key."""
     return hashlib.sha256(
         json.dumps(asdict(cfg), sort_keys=True, default=list).encode()
     ).hexdigest()
+
+
+def candidate_run_hash(cfg: CandidatePreReg, fixture_path) -> str:
+    """Holdout-unlock key (Amendment F2): byte-exact mirror of prereg.config_hash —
+    canonical config JSON THEN fixture bytes. Including fixture bytes is what makes
+    unlocking the shared reserved tail honest (it detects a fixture swap), matching
+    the floor's own hardening (tools/floor_data_check.py). Task 8 passes THIS as the
+    prereg_hash; never the fixture-blind candidate_hash()."""
+    h = hashlib.sha256()
+    h.update(json.dumps(asdict(cfg), sort_keys=True, default=list).encode())
+    h.update(Path(fixture_path).read_bytes())
+    return h.hexdigest()

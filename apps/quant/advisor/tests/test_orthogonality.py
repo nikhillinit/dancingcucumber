@@ -17,8 +17,8 @@ def _panel(n=900, k=12, seed=1):
 def _firing_panel(n=2200, k=12, seed=1):
     # Random walk (drift 0), long enough that dev folds clear value_lookback, so the
     # `value` leg actually FIRES (intermediate-term losers exist). On a positive-drift
-    # or too-short panel `value` is all-flat and the post-transform corr is
-    # degenerately 0 -- which would make the transform tests vacuous.
+    # or too-short panel `value` is all-flat and the post-transform corr is a
+    # degenerate NaN -- which would make the transform tests vacuous.
     rng = np.random.default_rng(seed)
     cols = {f"A{i}": 100 * np.exp(np.cumsum(rng.normal(0.0, 0.01, n))) for i in range(k)}
     cols["SPY"] = 100 * np.exp(np.cumsum(rng.normal(0.0, 0.008, n)))
@@ -95,3 +95,14 @@ def test_post_transform_differs_from_raw_on_live_horizon():
                                       value_skip=126, value_lookback=270,
                                       neighbors=("long_momentum",))
     assert abs(raw["long_momentum"] - pt["long_momentum"]) > 0.2
+
+
+def test_post_transform_degenerate_value_leg_is_nan_not_zero():
+    # On a positive-drift panel too short for value to clear value_lookback, the value
+    # leg is all-flat (std 0). The post-transform corr is then UNDEFINED and must come
+    # back NaN -- never a misleading 0.0 that would read as a false orthogonality PASS.
+    panel = _panel()   # drift+ n=900 -> value never fires (dead leg)
+    pt = dev_fold_post_transform_corr(panel, warmup=200, holdout_frac=0.2,
+                                      value_skip=126, value_lookback=270,
+                                      neighbors=("long_momentum", "mean_reversion"))
+    assert all(np.isnan(v) for v in pt.values())

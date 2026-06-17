@@ -15,7 +15,12 @@ def test_default_candidate_validation_freezes_dsr_params():
     assert v.dsr_pass == 0.95
     assert v.tstat_hurdle == 3.0
     assert v.psr_benchmark_sr == 0.0
-    assert v.declared_var_sr == 1e-4      # reused as conservative-and-stricter (see T8)
+    # declared_var_sr is the PRE-REGISTERED constant (frozen in CANDIDATE_PREREG.md, its
+    # hash recorded there). T8 calibrates the candidate's per-obs trial var_sr to JUSTIFY
+    # reusing 1e-4 as conservative-and-stricter (1e-4 >= measured) -- it does NOT silently
+    # mutate this default. If calibration ever required a different value, that is a
+    # re-pre-registration event (new hash, documented) and this assert SHOULD break loudly.
+    assert v.declared_var_sr == 1e-4
 
 
 def test_candidate_validation_hash_is_stable_and_sensitive():
