@@ -142,6 +142,17 @@ calling 270 "a genuine signal verdict, not a rigged one" overclaims. Fix:
   <X% nonzero transformed in any fold), the verdict is labeled **power-limited / inconclusive**,
   NOT "Reading A exhausted." Soften the Task 8 Step-3 caveat to match.
 
+### Amendment F7 (LOW, but blocks execution) — resolve the fixture-loader placeholders
+
+There is NO importable `advisor.backtest.<floor_fixture_module>.<load_panel>`. The floor's
+loader is script-local (`tools/floor_data_check.py:12,62`):
+`pd.read_csv(Path("apps/quant/advisor/tests/fixtures/floor_prices.csv"), index_col=0,
+parse_dates=True)`. The plan's file list also names the WRONG path
+(`backtest/fixtures/…` — the real one is `tests/fixtures/…`). Fix: replace every
+`<floor_fixture_module>`/`<load_panel>` placeholder (Task 4 file list + tests, Task 6 Step 1,
+Task 8 Step 2) with that concrete `read_csv` (or the one-line `load_floor_panel()` helper added
+in Task 4), and correct the fixture path. This makes Tasks 4/6/8 directly executable.
+
 <!-- amendments-end -->
 
 ---
@@ -588,11 +599,13 @@ git commit -m "feat(research): candidate_pipeline mirrors frozen sweep/holdout w
 
 **Files:**
 - Test: `apps/quant/advisor/tests/test_candidate_golden_replication.py`
-- Read-only: `apps/quant/advisor/backtest/fixtures/floor_prices.csv` (locate via the floor's own loader — see Step 1)
+- Read-only: `apps/quant/advisor/tests/fixtures/floor_prices.csv` (Amendment F7 — the real path; loaded via `pd.read_csv(..., index_col=0, parse_dates=True)`, see Step 1)
 
 - [ ] **Step 1: Find how the floor loads its fixture into a `panel`**
 
-Run: `python -m pytest apps/quant/advisor/backtest -q -k floor` then inspect the floor test that builds `panel` from `floor_prices.csv` (grep `floor_prices` under `apps/quant/advisor/`). Reuse that exact loader in the test (do not re-invent column handling). Expected: a `pd.DataFrame` with a `SPY` column + 30 asset columns.
+**Resolved (Amendment F7):** the loader is script-local in `tools/floor_data_check.py:12,62` —
+`pd.read_csv(Path("apps/quant/advisor/tests/fixtures/floor_prices.csv"), index_col=0, parse_dates=True)`.
+Use the `load_floor_panel()` helper shown in Step 2 (do not re-invent column handling). Expected: a `pd.DataFrame` with a `SPY` column + 30 asset columns.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -645,7 +658,7 @@ def test_value_leg_is_live_in_every_dev_fold():
     from advisor.backtest.splits import purged_splits
     from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C
     from advisor.research.candidate_signals import VALUE, candidate_raw
-    panel = <load_panel>()
+    panel = load_floor_panel()        # Amendment F7 (helper defined above)
     assets = [c for c in panel.columns if c != "SPY"]
     prices_all = panel[assets].iloc[C.warmup:].reset_index(drop=True)
     dev = prices_all.iloc[:int(len(prices_all) * 0.8)]
@@ -777,7 +790,7 @@ git commit -m "feat(research): dev-fold raw-correlation diagnostic for the value
 
 ```powershell
 $env:PYTHONUTF8=1; $env:PYTHONPATH="apps/quant"
-python -c "from advisor.research.orthogonality import dev_fold_raw_corr; from advisor.backtest.<floor_fixture_module> import <load_panel> as L; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C; print(dev_fold_raw_corr(L(), warmup=C.warmup, holdout_frac=0.2, value_skip=C.value_skip, value_lookback=C.value_lookback, neighbors=('momentum','long_momentum','mean_reversion'), folds=C.folds, embargo=C.embargo))"
+python -c "import pandas as pd; from pathlib import Path; from advisor.research.orthogonality import dev_fold_raw_corr; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C; P=pd.read_csv(Path('apps/quant/advisor/tests/fixtures/floor_prices.csv'), index_col=0, parse_dates=True); print(dev_fold_raw_corr(P, warmup=C.warmup, holdout_frac=0.2, value_skip=C.value_skip, value_lookback=C.value_lookback, neighbors=('momentum','long_momentum','mean_reversion'), folds=C.folds, embargo=C.embargo))"
 ```
 
 - [ ] **Step 2: Apply the pre-registered decision rule**
@@ -955,7 +968,7 @@ git commit -m "docs(research): pre-register the value+momentum candidate (hash, 
 
 ```powershell
 $env:PYTHONUTF8=1; $env:PYTHONPATH="apps/quant"
-python -c "from advisor.research.candidate_floor import candidate_metrics; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C, candidate_hash; from advisor.backtest.<floor_fixture_module> import <load_panel> as L; import json; print(json.dumps(candidate_metrics(L(), C, prereg_hash=candidate_hash(C)), default=str, indent=2))"
+python -c "import pandas as pd, json; from pathlib import Path; from advisor.research.candidate_floor import candidate_metrics; from advisor.research.candidate_prereg import DEFAULT_CANDIDATE as C, candidate_run_hash; FX=Path('apps/quant/advisor/tests/fixtures/floor_prices.csv'); P=pd.read_csv(FX, index_col=0, parse_dates=True); print(json.dumps(candidate_metrics(P, C, prereg_hash=candidate_run_hash(C, FX)), default=str, indent=2))"
 ```
 
 - [ ] **Step 3: Interpret against the pre-registered bar (no post-hoc threshold changes)**
@@ -1009,7 +1022,7 @@ Deep-research verdict: PBO/CSCV is **audit-only, medium-confidence, synthetic-va
 - Reading-fork explicit decision → Task 11. ✓
 - Promotion deferred (1b/3), frozen floor + `--enforce` exit 1 untouched → Tasks 9, rails. ✓
 
-**Placeholder scan:** the only intentional placeholders are `<floor_fixture_module>` / `<load_panel>` (resolved in Task 4 Step 1 by locating the floor's real loader) — every executing task points to that resolution. No `TBD`/`add error handling`/`similar to Task N`.
+**Placeholder scan:** RESOLVED (Amendment F7) — the former `<floor_fixture_module>` / `<load_panel>` placeholders are now the concrete `pd.read_csv("apps/quant/advisor/tests/fixtures/floor_prices.csv", index_col=0, parse_dates=True)` / `load_floor_panel()` in every executing task (4/6/8). No remaining placeholders, `TBD`, or `add error handling`.
 
 **Type consistency:** `SweepResultExt`/`HoldoutReturnsExt` field names match `candidate_metrics`'s reads (`fold_deltas`, `ensemble_test_returns`, `best_family_test_returns`, `chosen_weights`; `ensemble`/`best_family`/`spy`). `candidate_raw(family, prices, *, value_skip, value_lookback)` signature matches the `raw_fn` closure in Tasks 6/7. `CandidatePreReg` exposes every attribute the mirrored pipeline reads from `cfg`.
 
