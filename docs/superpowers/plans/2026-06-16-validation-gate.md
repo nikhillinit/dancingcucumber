@@ -2,6 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## ✅ STATUS: COMPLETE — IMPLEMENTED + VERIFIED (2026-06-16)
+
+All 9 tasks shipped via Hermes solo (Tasks 1–8 by Codex; Task 9 calibration/hash by Claude per handoff §5), one task = one commit, pushed to `origin/main` (`nikhillinit/dancingcucumber`).
+
+- **Commits:** `e5209e8` (T1) → `a4420ce` (T2) → `f56c46b` (T3) → `87f93a5` (T4) → `fa35bfc` (T5) → `b8bbf6b` (T6) → `f127818` (T7) → `549d6f2` (T8) → `c0ff501` (T9).
+- **Calibration:** `tools/calibrate_var_sr.py` over the A–E trial book measured `var_sr_trials = 4.28e-05` → rounded **up** to `declared_var_sr = 1e-4` (interim 4e-4 was an uncalibrated overestimate, replaced).
+- **Result:** real ensemble per-obs Sharpe 0.046 → **DSR 0.80 < 0.95 bar → FAIL**; `effective_N` 1.01 but `n_used` 45 (declared dominates); MinBTL not exceeded. The gate **confirms `DEV_FAILED` harder; verdict never flips.**
+- **Verification (all green):** full advisor pytest **131 passed**; `npm run advisor-gate` **exit 0** (DEV_FAILED + report-only caveat line); `node tools/run-floor.mjs --enforce` **exit 1**; `validation_hash = 5f5254d3025a0ab3e4de3151825e77d1aee813cf69d802250b82a8811cb4ca8b` re-derived from the committed tree matches `VALIDATION_PREREG.md`; no `<paste>` markers; `2026-06-16-deferred-plans-roadmap.md` committed.
+- **Rails held:** `PreRegConfig` untouched (separate `ValidationPreReg`); `allocator.py`/`ensemble_vote` untouched; `data_floor.floor_metrics` change is additive (+10/−0, verdict branch untouched, proven by `test_floor_metrics_validation_is_additive_only`).
+
+**Next (deferred, NOT started):** Plan 1b (make `--enforce` require `validation["passes"]`), Plan 2 (Workstream C five-family CLI — the prerequisite for candidate-family work), Plan 3 (post-C signal program). See `docs/superpowers/plans/2026-06-16-deferred-plans-roadmap.md`.
+
+Task checkboxes below are left as-authored (historical record); every task is committed per the hashes above.
+
+---
+
 **Goal:** Add a signal-agnostic deflation / multiple-testing validation gate to the backtest harness as report-only diagnostics that can only confirm `DEV_FAILED` harder — never green-wash, never unlock the holdout, never authorize production sizing.
 
 **Architecture:** A new immutable `ValidationPreReg` (its own hash surface — **not** new fields on the frozen `PreRegConfig`, which would invalidate the recorded floor hash `1ad2ed4a…`). A dependency-light `validation.py` of pure functions (per-observation Sharpe + moments, PSR, DSR, MinBTL, HLZ t-stat, PCA effective-N over family return series). Diagnostics are appended to `floor_metrics()`'s report dict under a new `"validation"` key; the `verdict` branch is untouched. The dominant multiple-testing count `N` is a pre-registered integer (the MinBTL budget, 45 — conservative); PCA effective-N over families is built and tested per the chosen scope but is **bounded below by the declared integer**, so it can only ever raise the bar, never lower it.
