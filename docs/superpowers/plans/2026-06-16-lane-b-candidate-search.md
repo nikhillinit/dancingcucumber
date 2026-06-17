@@ -94,6 +94,25 @@ prefix / empty-`pos` percentile-fit path (`continuous_signals.py:26-31`). Fix Ta
   everywhere → `fit_percentile_transform` gets empty `pos` → value scores flat (0), no crash —
   proving the degenerate path the golden families never hit is handled.
 
+### Amendment F4 (HIGH) — measure orthogonality on the surface that enters the blend
+
+The blend uses TRANSFORMED long-flat conviction scores (`pipeline.py:67` blends
+`apply_transform` outputs; ≤0 raw → 0, `continuous_signals.py:34-45`), so the diversification
+§7.2 rewards lives in the transformed scores, not the raw. Raw pooled Pearson across
+heterogeneous assets (plan Task 5) can disagree with that. Fix Tasks 5–6:
+
+- Keep raw Pearson as a pre-registered **diagnostic**, but ALSO compute/gate the
+  **post-transform fold-level** correlation: fit `fit_percentile_transform` on each dev fold's
+  TRAIN rows, `apply_transform`, then correlate `value`'s scores vs each neighbor's scores on
+  the fold TEST rows (holdout excluded) — this is what actually blends.
+- Add **Spearman / rank** correlation as a scale-robust cross-check on the raw (heterogeneous
+  assets make Pearson scale-fragile).
+- Make the **`momentum` decision rule explicit**: momentum is the blend partner, so its
+  correlation is reported AND, if `|corr(value, momentum)|` (post-transform) is high, the
+  orthogonality gate is demoted from "the pivot / clean PASS" to a **coarse pre-filter** — §7.2
+  on the real fixture becomes the adjudicator, not a green light. Document `τ=0.40` as a
+  pre-filter threshold, not a proof of diversification.
+
 <!-- amendments-end -->
 
 ---
@@ -734,7 +753,7 @@ python -c "from advisor.research.orthogonality import dev_fold_raw_corr; from ad
 
 - [ ] **Step 2: Apply the pre-registered decision rule**
 
-- **GATE NEIGHBORS** = `long_momentum`, `mean_reversion` (the rejected-factor relabel check). `momentum` is reported as a **diagnostic only** — it is `value`'s blend partner, so its correlation is the most decision-relevant number to *see* pre-holdout (the AQR thesis is value⊥momentum), but §7.2 ultimately adjudicates the blend; do not gate on it.
+- **GATE NEIGHBORS** = `long_momentum`, `mean_reversion` (the rejected-factor relabel check). `momentum` is reported as a **diagnostic only** — it is `value`'s blend partner, so its correlation is the most decision-relevant number to *see* pre-holdout (the AQR thesis is value⊥momentum), but §7.2 ultimately adjudicates the blend; do not gate on it. **(Amendment F4)** Run the gate on the **post-transform fold-level** correlation (what blends), not only raw Pearson; report Spearman as a scale-robust cross-check; a high post-transform `|corr(value, momentum)|` demotes the gate to a coarse pre-filter (§7.2 adjudicates), it is not a clean PASS.
 - **PASS (proceed to B2):** `max(|corr(value, long_momentum)|, |corr(value, mean_reversion)|) < orthogonality_tau (0.40)`. The value signal is empirically decorrelated from the rejected neighbors → the diversification hypothesis is live. Record the `momentum` diagnostic alongside.
 - **FAIL (STOP — cheap negative):** if either gated |corr| ≥ 0.40, `value` is a relabel of an already-rejected factor (plan4). Record the negative in `CANDIDATE_RESULT.md`, skip B2 entirely, and jump to Task 11 (Reading B). This is the *intended* cheap-falsification outcome and a valid deliverable.
 
