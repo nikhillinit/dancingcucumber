@@ -5,8 +5,20 @@
 // on a floor miss (used by advisor-release-gate, gating PRODUCTION RELEASE only).
 import { spawnSync } from 'node:child_process';
 
+const userArgs = process.argv.slice(2);
+const allowed = userArgs.length === 0 || (userArgs.length === 1 && userArgs[0] === '--enforce');
+if (!allowed) {
+  console.error(
+    'run-floor: refusing ' +
+      JSON.stringify(userArgs) +
+      ' - holdout is not reachable through this wrapper; use a separate operator-approved lane ' +
+      '(run python tools/floor_data_check.py --holdout deliberately, outside this gate).'
+  );
+  process.exit(2);
+}
+
 const args = ['tools/floor_data_check.py'];
-if (process.argv.includes('--enforce')) args.push('--enforce');
+if (userArgs[0] === '--enforce') args.push('--enforce');
 const r = spawnSync('python', args, {
   stdio: 'inherit',
   shell: process.platform === 'win32',
