@@ -20,17 +20,21 @@ def test_holdout_is_not_reachable_through_wrapper() -> None:
     result = _run_floor("--holdout")
     combined_output = result.stdout + result.stderr
 
-    assert result.returncode != 0
+    assert result.returncode == 2
     assert "not reachable through this wrapper" in combined_output
 
 
 def test_unknown_arg_is_rejected_by_wrapper() -> None:
     result = _run_floor("--bogus")
+    combined_output = result.stdout + result.stderr
 
-    assert result.returncode != 0
+    assert result.returncode == 2
+    assert "not reachable through this wrapper" in combined_output
 
 
 def test_enforce_holdout_combo_is_rejected_by_wrapper() -> None:
     result = _run_floor("--enforce", "--holdout")
+    combined_output = result.stdout + result.stderr
 
-    assert result.returncode != 0
+    assert result.returncode == 2
+    assert "not reachable through this wrapper" in combined_output

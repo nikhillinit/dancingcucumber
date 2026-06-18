@@ -56,6 +56,18 @@ DENYLIST_PATTERNS = [
         r"95%\+",
         r"Sharpe\s?>\s?2\.5",
         r"immediate deployment",
+        r"--mode production",
+        r"production deployment",
+        r"live deployment",
+        r"enable trading",
+        r"disable kill switch",
+        r"live positions",
+        r"graduate to .*live",
+        r"automated .*(order|fidelity|trading)",
+        r"order placement",
+        r"market[- ]?open execution",
+        r"deploy to production|go to production",
+        r"ready for production",
     ]
 ]
 

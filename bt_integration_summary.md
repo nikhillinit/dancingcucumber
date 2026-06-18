@@ -141,6 +141,7 @@ The BT Framework integration has been successfully implemented, delivering the f
 - Volatility-adjusted confidence scoring
 - Sophisticated ensemble prediction
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Production Readiness
 
 #### System Status
@@ -156,6 +157,7 @@ The system is ready for production deployment with:
 - Realistic cost modeling
 - Advanced risk management
 - Comprehensive performance reporting
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ### Conclusion
 

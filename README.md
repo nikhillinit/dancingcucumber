@@ -144,8 +144,10 @@ npm run worker
 ## Database Management
 
 ```sql
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 -- Disable kill switch (enable trading)
 UPDATE execution_controls SET kill_switch = false WHERE id = 1;
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 -- Check ingestion lag
 SELECT symbol, source, last_ts,
@@ -167,6 +169,7 @@ Prometheus metrics available at:
 - Quant: http://localhost:8001/metrics
 - Worker: http://localhost:9101/metrics
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## Production Deployment
 
 1. Set `NODE_ENV=production` and update database credentials
@@ -176,3 +179,4 @@ Prometheus metrics available at:
 5. Implement backup/recovery procedures
 6. Add authentication/authorization layer
 7. Deploy behind load balancer with SSL termination
+<!-- AIHF_TRUTH_ARCHIVE_END -->

@@ -54,12 +54,12 @@
 
 <!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 #### 1. **Fidelity Automated Trading** (`fidelity_automated_trading.py`)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - ✅ Browser automation for order execution
 - ✅ 2FA support
 - ✅ Position management
 - ✅ Zero commission modeling
 - ✅ Dry run and paper trading modes
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 #### 2. **Enhanced Evaluation System** (`enhanced_evaluation_system.py`)
 - ✅ Open-to-open returns calculation
@@ -93,12 +93,12 @@ pip install yfinance quantstats scipy playwright
 
 <!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 For Fidelity automation:
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 ```bash
 pip install fidelity-api
 # OR for manual automation:
 playwright install chromium
 ```
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## 🎯 Quick Start
 
@@ -119,14 +119,15 @@ python run_master_system.py --mode backtest
 
 <!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 4. Production (Live Trading)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 ```bash
 # Configure Fidelity credentials first
 python run_master_system.py --mode production
 ```
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## ⚙️ Configuration
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Fidelity Setup
 Create `fidelity_config.json`:
 ```json
@@ -145,7 +146,9 @@ Set password in environment:
 ```bash
 export FIDELITY_PASSWORD="your_password"
 ```
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## 📊 Daily Workflow
 
 ### Morning Routine (Automated)
@@ -177,6 +180,7 @@ export FIDELITY_PASSWORD="your_password"
 - Risk-adjusted metrics
 - Alpha attribution
 - Report generation
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## 📈 Performance Validation
 
@@ -257,6 +261,7 @@ AIHedgeFund/
     └── options_flow_tracker.py             # Options activity
 ```
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## 🎯 Next Steps
 
 1. **Configure Fidelity credentials**
@@ -264,6 +269,7 @@ AIHedgeFund/
 3. **Monitor daily performance metrics**
 4. **Validate alpha generation**
 5. **Graduate to small live positions**
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## 📞 Support
 
