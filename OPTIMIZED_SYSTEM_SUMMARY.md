@@ -162,7 +162,9 @@ C:\dev\AIHedgeFund\
 ```
 ├── accuracy_enhancement_plan.py       # Enhancement strategies
 ├── advanced_model_training.py         # ML training modules
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ├── production_ai_system.py           # Production deployment
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 └── requirements.txt                   # Dependencies
 ```
 
@@ -184,6 +186,7 @@ python test_optimized_ensemble.py
 <!-- AIHF_TRUTH_ARCHIVE_END -->
 ```
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 3. Production Deployment
 ```python
 from optimized_ensemble_system import OptimizedEnsembleSystem
@@ -200,14 +203,15 @@ recommendations = system.generate_optimized_recommendations(['AAPL', 'GOOGL'])
 # Monitor performance
 health = system.performance_monitor.get_health_report()
 ```
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 <!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 4. Live Trading Integration
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - Set up data feeds (Yahoo Finance, FRED API)
 - Implement position sizing with Kelly criterion
 - Configure risk management parameters
 - Enable real-time monitoring and alerts
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
@@ -263,12 +267,14 @@ health = system.performance_monitor.get_health_report()
 - ✅ **Production Ready:** Comprehensive deployment system
 <!-- AIHF_TRUTH_ARCHIVE_END -->
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Next Steps
 1. **Live Deployment:** Begin paper trading validation
 2. **Performance Monitoring:** Track real-world accuracy
 3. **Continuous Optimization:** Regular model retraining
 4. **Scale Testing:** Expand to larger stock universe
 5. **Risk Validation:** Stress testing in various market conditions
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 

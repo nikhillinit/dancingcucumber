@@ -211,6 +211,7 @@ from newsapi import NewsApiClient
 newsapi = NewsApiClient(api_key='YOUR_KEY')
 ```
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Week 4: Production Deployment
 ```python
 # 1. AWS deployment
@@ -228,6 +229,7 @@ newsapi = NewsApiClient(api_key='YOUR_KEY')
 - A/B testing framework
 - Performance tracking
 ```
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## ADVANCED TECHNIQUES (3-6 Months)
 

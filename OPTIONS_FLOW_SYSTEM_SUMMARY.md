@@ -68,6 +68,7 @@ A production-ready options flow tracking system has been successfully implemente
   - Risk management testing
   - Performance tracking validation
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 3. Integration Demo: `options_flow_integration_demo.py`
 - **Purpose**: Production deployment demonstration
 - **Features**:
@@ -75,6 +76,7 @@ A production-ready options flow tracking system has been successfully implemente
   - Alpha generation across market scenarios
   - Production report generation
   - Integration status validation
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## Technical Architecture
 
@@ -206,6 +208,7 @@ The system monitors options flow for the following symbols:
 - Alpha realization tracking
 - Risk metric evolution
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## Production Deployment Status
 
 ### ✅ Completed Components
@@ -223,6 +226,7 @@ The system monitors options flow for the following symbols:
 - Risk controls functioning properly
 - Integration points validated
 - Production readiness certified
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## Usage Examples
 

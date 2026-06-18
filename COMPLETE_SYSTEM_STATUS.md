@@ -170,18 +170,19 @@
 - ✅ $0 additional costs (all free sources)
 - ✅ 100% legal compliance
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Ready for Production:
 - ✅ Daily automated analysis
 - ✅ Fidelity-compatible orders
 - ✅ Risk management integrated
 - ✅ Performance tracking ready
 - ✅ 50-minute daily workflow
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
 <!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## 📋 DAILY WORKFLOW (PRODUCTION READY)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ### Morning (8:00 AM - 15 minutes)
 1. Run `ultimate_hedge_fund_system.py`
@@ -205,6 +206,7 @@
 2. Update tracking spreadsheet
 3. Check for after-hours filings
 4. Prepare for next day
+<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
