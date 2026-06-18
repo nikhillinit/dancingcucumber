@@ -1,7 +1,7 @@
 from datetime import date
 
 from advisor.data.edgar_xbrl_fixture import EdgarXbrlRecord
-from advisor.research.fundamental_value import select_asof
+from advisor.research.fundamental_value import bp_timely, select_asof
 
 
 def _rec(accession, value, accepted, available, amended=False, superseded_by=""):
@@ -48,3 +48,30 @@ def test_returns_amendment_once_it_is_available():
 def test_missing_key_returns_none():
     assert select_asof(RECORDS, "MSFT", "StockholdersEquity", date(2017, 6, 1)) is None
     assert select_asof(RECORDS, "AAPL", "Revenues", date(2017, 6, 1)) is None
+
+
+def test_bp_timely_is_split_invariant():
+    # Advisor-verified scenario. At t0: equity=1000, shares=10 (pre-split),
+    # raw_close(t0)=50 -> mktcap_anchor=500, book/price(t0)=1000/500=2.0.
+    # Then a 2:1 split + 20% rise: true shares=20, raw_close(t)=30 -> true mktcap(t)=600,
+    # so the TRUE timely book/price = 1000/600 = 1.6667. The adjusted series (ref=present)
+    # has price_adj(t)=30 and price_adj(t0)=25 (the pre-split 50 halved for the 2:1).
+    # The split-invariant formula must reproduce the true value WITHOUT any share bridge:
+    bp = bp_timely(equity=1000.0, mktcap_anchor=500.0, price_adj_t0=25.0, price_adj_t=30.0)
+    assert bp is not None
+    assert abs(bp - (1000.0 / 600.0)) < 1e-9
+
+
+def test_bp_timely_neutral_on_missing_or_degenerate():
+    assert bp_timely(1000.0, 500.0, 25.0, 30.0) is not None
+    assert bp_timely(None, 500.0, 25.0, 30.0) is None
+    assert bp_timely(1000.0, None, 25.0, 30.0) is None
+    assert bp_timely(1000.0, 0.0, 25.0, 30.0) is None      # anchor <= 0
+    assert bp_timely(1000.0, 500.0, 25.0, 0.0) is None      # price_adj_t <= 0
+
+
+def test_bp_timely_higher_when_price_is_lower():
+    # cheaper today (lower price_adj_t) => higher book-to-price (more "value")
+    expensive = bp_timely(1000.0, 500.0, 25.0, 50.0)
+    cheap = bp_timely(1000.0, 500.0, 25.0, 10.0)
+    assert cheap > expensive

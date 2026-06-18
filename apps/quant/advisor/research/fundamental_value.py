@@ -32,3 +32,31 @@ def select_asof(
         return None
     # latest available wins; deterministic accession tie-break for same-day availability
     return max(eligible, key=lambda r: (r.available_asof, r.accession))
+
+
+def bp_timely(
+    equity: float | None,
+    mktcap_anchor: float | None,
+    price_adj_t0: float | None,
+    price_adj_t: float | None,
+) -> float | None:
+    """Split-INVARIANT timely book-to-price.
+
+        bp_timely(t) = (equity / mktcap_anchor) * price_adj(t0) / price_adj(t)
+
+    `equity` (StockholdersEquity) and `mktcap_anchor` (= shares_asof * RAW close at the
+    filing's availability t0) are real-dollar aggregates -> split-invariant. The
+    `price_adj(t0)/price_adj(t)` ratio uses ONE consistent adjusted series -> split-
+    neutral. There is NO per-share division across a split date, so no split-basis
+    bridge is needed. t0 = the anchor's available_asof; select_asof re-anchors at each
+    new filing, so the rescale window is < ~1 quarter and auto_adjust dividend drift in
+    the ratio is negligible (intentional approximation; do not gold-plate).
+
+    Returns None on any missing input or degenerate denominator (mktcap_anchor <= 0 or
+    price_adj_t <= 0) -> neutral, never fabricated.
+    """
+    if equity is None or mktcap_anchor is None or price_adj_t0 is None or price_adj_t is None:
+        return None
+    if mktcap_anchor <= 0 or price_adj_t <= 0:
+        return None
+    return (equity / mktcap_anchor) * (price_adj_t0 / price_adj_t)
