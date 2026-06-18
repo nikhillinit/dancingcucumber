@@ -101,6 +101,41 @@ The LIVE multiple-testing trial count is `CandidateValidationPreReg.declared_tri
 promotion and production/live/sizing remain OUT of scope. WS3C (source-specific fixture/prereg)
 stays BLOCKED until the separate WS3B feasibility record confirms a point-in-time source.
 
+## PIT Source Feasibility Record
+
+Summary: SEC EDGAR XBRL qualifies as a point-in-time source for the next planning step only.
+
+**Verdict:** `QUALIFIES` — source = `SEC_EDGAR_XBRL` (per-accession records). Point-in-time
+reconstruction is provable; the lane is NOT stopped as `RESTATED_PROXY_ONLY`.
+
+| Field | Record |
+| --- | --- |
+| `source` | SEC EDGAR XBRL — Financial Statement & Notes Data Sets (SUB / NUM / TXT files) and/or the keyless `data.sec.gov` per-accession APIs (companyconcept / submissions). Explicitly NOT the single aggregate "current company-facts" value. |
+| `data_class` | As-originally-reported fundamentals per filing — book value (`StockholdersEquity`) and common shares outstanding (`CommonStockSharesOutstanding` / `dei:EntityCommonStockSharesOutstanding` / weighted-average share tags). |
+| `license` | U.S. government work / public domain; SEC filing content is free to reuse and redistribute. |
+| `redistribution` | Permitted. |
+| `as_of_mechanism` | Each numeric fact (NUM) is keyed to an accession (`adsh`); the submission record (SUB) for that accession carries `filed` (filing date) and `accepted` (acceptance datetime). For an evaluation date `as_of`, select only records with `accepted <= as_of` and take the latest applicable per concept. This realizes `available_asof = max(report_period_end + REPORTING_LAG_DAYS, filing_date, accepted_datetime, snapshot_date)`. |
+| `restatement_policy` | Amendments (form 10-K/A, `AmendmentFlag=true`, `prevrpt`) are separate accessions with their own later `accepted` datetime and are used only as-of that later date; the original accepted record is the point-in-time datum. Never backfill a restated value to an earlier `as_of`. |
+| `fixture_committable` | Yes — only the needed `(asset, date, concept)` slice is extracted and committed; the full FSN corpus is large (~tens of GB) but the per-name slice is tiny and committable. |
+| `fair_access_limits` | SEC fair-access policy applies: a descriptive declared User-Agent is required and requests are capped at ~10 requests/second; bulk FSN ZIP downloads avoid per-request limits. |
+
+Evidence: the verdict rests on in-repo worked examples at
+`stefan-jansen-ml/02_market_and_fundamental_data/04_sec_edgar/`. The SUB file exposes per-filing
+`adsh`, `form`, `period`, `filed`, and `accepted`; the NUM file ties each `value` to its `adsh`.
+The single discriminator answered YES: **the exact accession/form/accepted record for book value +
+shares CAN be selected as-of the evaluation date.** Aggregate "current" company-facts (a single
+latest/restated value) would NOT qualify and is excluded by the `as_of_mechanism` above.
+
+Binding constraint: XBRL is only mandatory/complete from 2009 onward (FSN datasets begin 2009; full
+quarterly cadence in the worked examples is 2014+). Reading B's fixture date range must fall within
+XBRL coverage; assets/periods without an as-of-knowable accession are `unavailable` and excluded,
+never proxied.
+
+Rails preserved: WS3C (source-specific fixture/prereg) stays BLOCKED until that fixture work is
+separately greenlit; a `QUALIFIES` verdict authorizes the NEXT planning step only, not data-build,
+not promotion. `DEV_FAILED` stays; holdout untouched; `run-floor --enforce` exits 1; no
+production/sizing authorized.
+
 ## Reuse of the Lane B bench (signal-agnostic)
 
 The bench is signal-agnostic: only `candidate_raw` (a new `value` construction) and the fixture
