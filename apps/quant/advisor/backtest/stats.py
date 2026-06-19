@@ -12,6 +12,33 @@ def book_sharpe(returns: pd.Series, periods_per_year: int = 252) -> float:
     return float(r.mean() / std * np.sqrt(periods_per_year))
 
 
+def downside_deviation(returns: pd.Series, periods_per_year: int = 252,
+                       target: float = 0.0) -> float:
+    r = pd.Series(returns).dropna()
+    if len(r) == 0:
+        return 0.0
+    d = np.minimum(r - target, 0.0)
+    return float(np.sqrt((d ** 2).mean()) * np.sqrt(periods_per_year))
+
+
+def sortino(returns: pd.Series, periods_per_year: int = 252,
+            target: float = 0.0) -> float:
+    r = pd.Series(returns).dropna()
+    dd = np.sqrt((np.minimum(r - target, 0.0) ** 2).mean()) if len(r) else 0.0
+    if len(r) == 0 or dd == 0:
+        return 0.0
+    return float((r - target).mean() / dd * np.sqrt(periods_per_year))
+
+
+def max_drawdown(returns: pd.Series) -> float:
+    r = pd.Series(returns).dropna()
+    if len(r) == 0:
+        return 0.0
+    equity = (1.0 + r).cumprod()
+    drawdown = equity / equity.cummax() - 1.0
+    return float(drawdown.min())
+
+
 def _block_indices(n: int, block: int, rng: np.random.Generator) -> np.ndarray:
     """Circular moving-block bootstrap index sample of length n."""
     n_blocks = int(np.ceil(n / block))
