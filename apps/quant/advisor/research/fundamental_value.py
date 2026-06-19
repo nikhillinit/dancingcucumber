@@ -68,6 +68,27 @@ def bp_timely(
     return (equity / mktcap_anchor) * (price_adj_t0 / price_adj_t)
 
 
+def _matching_anchor(
+    records: list[EdgarXbrlRecord],
+    equity: EdgarXbrlRecord,
+    anchor_concept: str,
+    as_of: date,
+) -> EdgarXbrlRecord | None:
+    eligible = [
+        r for r in records
+        if (
+            r.asset == equity.asset
+            and r.concept == anchor_concept
+            and r.accession == equity.accession
+            and r.report_period_end == equity.report_period_end
+            and r.available_asof <= as_of
+        )
+    ]
+    if not eligible:
+        return None
+    return max(eligible, key=lambda r: (r.available_asof, r.accession))
+
+
 def build_fundamental_panel(
     records: list[EdgarXbrlRecord],
     panel: pd.DataFrame,
@@ -81,8 +102,9 @@ def build_fundamental_panel(
     DatetimeIndex of adjusted closes), then sliced `[warmup:]` and reset to a positional
     RangeIndex so it shares candidate_pipeline's `prices_all = panel[assets].iloc[warmup:]
     .reset_index(drop=True)` basis. As-of per row (re-anchored each quarter by select_asof);
-    unavailable -> NaN (the percentile transform maps NaN -> 0 -> flat). Date threading is
-    done HERE, never inside raw_fn.
+    unavailable -> NaN (the percentile transform maps NaN -> 0 -> flat). The anchor must
+    match the selected equity accession; a later filing with no anchor is neutral, never
+    paired with a stale prior anchor. Date threading is done HERE, never inside raw_fn.
     """
     if assets is None:
         assets = [c for c in panel.columns if c != "SPY"]
@@ -97,7 +119,7 @@ def build_fundamental_panel(
         for t in dates:
             as_of = t.date() if hasattr(t, "date") else t
             eq = select_asof(a_records, a, equity_concept, as_of)
-            anc = select_asof(a_records, a, anchor_concept, as_of)
+            anc = _matching_anchor(a_records, eq, anchor_concept, as_of) if eq else None
             if eq is None or anc is None:
                 col.append(float("nan"))
                 continue

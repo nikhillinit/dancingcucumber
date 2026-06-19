@@ -107,7 +107,7 @@ PANEL_RECORDS = [
         amended_flag=False, missingness_reason="", denominator_policy="",
     ),
     EdgarXbrlRecord(
-        asset="AAA", cik="x", accession="acc-anchor", form="10-K",
+        asset="AAA", cik="x", accession="acc-eq", form="10-K",
         report_period_end=date(2019, 12, 31), filing_date=date(2020, 1, 5),
         accepted_datetime=date(2020, 1, 5), concept="MarketCapAnchor", unit="USD",
         value=500.0, available_asof=date(2020, 1, 5), superseded_by="",
@@ -132,6 +132,47 @@ def test_panel_bp_value_uses_anchor_and_adjusted_ratio():
     assert abs(funda["AAA"].iloc[4] - 2.0) < 1e-9
     # row 9 (2020-01-10): price_adj(t)=19, price_adj(t0)=14 -> bp = 2.0 * 14/19
     assert abs(funda["AAA"].iloc[9] - 2.0 * 14.0 / 19.0) < 1e-9
+
+
+def test_panel_does_not_pair_later_equity_with_stale_anchor():
+    later_equity_without_anchor = EdgarXbrlRecord(
+        asset="AAA", cik="x", accession="acc-eq-2", form="10-Q",
+        report_period_end=date(2020, 3, 31), filing_date=date(2020, 1, 8),
+        accepted_datetime=date(2020, 1, 8), concept="StockholdersEquity", unit="USD",
+        value=2000.0, available_asof=date(2020, 1, 8), superseded_by="",
+        amended_flag=False, missingness_reason="", denominator_policy="",
+    )
+    funda = build_fundamental_panel(
+        PANEL_RECORDS + [later_equity_without_anchor],
+        _panel(),
+        ["AAA"],
+    )
+    assert funda["AAA"].iloc[4:7].notna().all()
+    assert funda["AAA"].iloc[7:].isna().all()
+
+
+def test_panel_does_not_pair_same_accession_wrong_period_anchor():
+    wrong_period_anchor = EdgarXbrlRecord(
+        asset="AAA", cik="x", accession="acc-eq-2", form="10-Q",
+        report_period_end=date(2019, 12, 31), filing_date=date(2020, 1, 8),
+        accepted_datetime=date(2020, 1, 8), concept="MarketCapAnchor", unit="USD",
+        value=900.0, available_asof=date(2020, 1, 8), superseded_by="",
+        amended_flag=False, missingness_reason="",
+        denominator_policy="as_reported_shares_x_raw_close_at_avail",
+    )
+    later_equity = EdgarXbrlRecord(
+        asset="AAA", cik="x", accession="acc-eq-2", form="10-Q",
+        report_period_end=date(2020, 3, 31), filing_date=date(2020, 1, 8),
+        accepted_datetime=date(2020, 1, 8), concept="StockholdersEquity", unit="USD",
+        value=2000.0, available_asof=date(2020, 1, 8), superseded_by="",
+        amended_flag=False, missingness_reason="", denominator_policy="",
+    )
+    funda = build_fundamental_panel(
+        PANEL_RECORDS + [later_equity, wrong_period_anchor],
+        _panel(),
+        ["AAA"],
+    )
+    assert funda["AAA"].iloc[7:].isna().all()
 
 
 def test_panel_warmup_slice_alignment():
