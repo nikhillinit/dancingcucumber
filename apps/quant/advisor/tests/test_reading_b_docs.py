@@ -33,11 +33,13 @@ def test_prereg_pins_fixture_and_all_hashes():
         assert h in text, h
 
 
-def test_result_records_blinded_holdout_and_pending_dev():
+def test_result_records_blinded_holdout_and_dev_verdict():
     text = RESULT.read_text(encoding="utf-8")
     assert FIXTURE_SHA in text
-    assert "NOT YET RUN" in text       # dev-gate run is the next step, honestly not claimed done
-    assert "UNTOUCHED" in text         # holdout blinded
+    assert "NOT YET RUN" not in text     # WS4: the dev-gate run is recorded, not pending
+    assert "DEV RUN COMPLETE" in text    # the dev verdict is now recorded
+    assert "dev.passed = False" in text  # candidate did not clear the dev gate
+    assert "UNTOUCHED" in text           # holdout still blinded / never touched
 
 
 def test_both_docs_carry_truth_anchors():
