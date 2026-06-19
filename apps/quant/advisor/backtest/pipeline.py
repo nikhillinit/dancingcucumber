@@ -1,7 +1,7 @@
 # apps/quant/advisor/backtest/pipeline.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,10 @@ class SweepResult:
     ensemble_test_returns: pd.Series
     best_family_test_returns: pd.Series
     chosen_weights: dict
+    # Report-only diagnostics (do NOT feed the verdict): the concatenated dev-OOS
+    # ensemble weight book and each family's per-fold OOS Sharpe vector.
+    ensemble_book: pd.DataFrame = field(default_factory=pd.DataFrame)
+    family_fold_sharpes: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,8 @@ def run_dev_sweep(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
 
     caps = (cfg.max_asset_weight, cfg.gross_cap, cfg.turnover_cap)
     deltas, ens_parts, best_parts = [], [], []
+    ens_books = []
+    fam_fold = {f: [] for f in families}
     chosen = {f: 1.0 / len(families) for f in families}
     for train_idx, test_idx in purged_splits(len(dev), cfg.folds, cfg.embargo):
         all_idx = list(range(min(train_idx), max(test_idx) + 1))
@@ -77,10 +83,12 @@ def run_dev_sweep(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
             fr = book_returns(fw, test_prices, cfg.cost_per_turn)
             fam_sharpes[f] = book_sharpe(fr)
             fam_rets[f] = fr
+            fam_fold[f].append(fam_sharpes[f])
         best_f = max(fam_sharpes, key=fam_sharpes.get)
         deltas.append(book_sharpe(ens_r) - fam_sharpes[best_f])
         ens_parts.append(ens_r)
         best_parts.append(fam_rets[best_f])
+        ens_books.append(ens_w)
 
     # Freeze the blend weights on the FULL dev portion (leakage-safe: dev excludes
     # the holdout), NOT the arbitrary last fold (debate finding #3). run_holdout
@@ -98,6 +106,8 @@ def run_dev_sweep(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
         ensemble_test_returns=pd.concat(ens_parts, ignore_index=True) if ens_parts else pd.Series(dtype=float),
         best_family_test_returns=pd.concat(best_parts, ignore_index=True) if best_parts else pd.Series(dtype=float),
         chosen_weights=frozen,
+        ensemble_book=pd.concat(ens_books, ignore_index=True) if ens_books else pd.DataFrame(),
+        family_fold_sharpes={f: list(v) for f, v in fam_fold.items()},
     )
 
 
