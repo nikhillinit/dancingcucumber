@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 import pandas as pd
 
 from advisor.backtest.continuous_signals import apply_transform, fit_percentile_transform
@@ -14,17 +16,27 @@ from advisor.research.candidate_signals import VALUE, candidate_raw
 from advisor.research.candidate_validation_prereg import (
     CandidateValidationPreReg, DEFAULT_CANDIDATE_VALIDATION,
 )
+from advisor.research.candidate_prereg_fundamental import (
+    FundamentalCandidatePreReg, DEFAULT_FUNDAMENTAL_CANDIDATE,
+    fundamental_candidate_run_hash,
+)
+from advisor.research.candidate_validation_prereg_fundamental import (
+    FundamentalCandidateValidationPreReg, DEFAULT_FUNDAMENTAL_CANDIDATE_VALIDATION,
+)
+from advisor.research.fundamental_value import FUNDAMENTAL_VALUE, make_fundamental_raw
+
+RawFn = Callable[[str, pd.Series], pd.Series]
 
 
-def _value_power_report(panel: pd.DataFrame, cfg: CandidatePreReg, holdout_frac: float,
-                        raw_fn, positive_floor: int = 25) -> dict:
+def _raw_power_report(panel: pd.DataFrame, cfg, holdout_frac: float,
+                      raw_fn: RawFn, family: str, positive_floor: int) -> dict:
     """Amendment F6 — sufficiency of the (thin) value percentile fit per dev fold. Reports
     the per-fold positive-raw TRAIN count (min/median across assets) and the nonzero
     transformed-score coverage on TEST rows. power_limited iff the MEDIAN positive-train
     count drops below positive_floor in any fold -> a DEV_FAILED there may be a power
     artifact, not a signal verdict (Task 8 labels it power-limited, not 'Reading A
     exhausted'). Report-only; never changes the machine verdict."""
-    if VALUE not in cfg.families:
+    if family not in cfg.families:
         return {"folds": [], "power_limited": False, "positive_floor": positive_floor}
     assets = [c for c in panel.columns if c != "SPY"]
     prices_all = panel[assets].iloc[cfg.warmup:].reset_index(drop=True)
@@ -33,7 +45,7 @@ def _value_power_report(panel: pd.DataFrame, cfg: CandidatePreReg, holdout_frac:
     for train_idx, test_idx in purged_splits(len(dev), cfg.folds, cfg.embargo):
         pos_counts, cover_num, cover_den = [], 0, 0
         for c in assets:
-            raw = raw_fn(VALUE, dev[c])
+            raw = raw_fn(family, dev[c])
             pos_counts.append(int((raw.iloc[train_idx].dropna() > 0).sum()))
             params = fit_percentile_transform(raw.iloc[train_idx], clip=cfg.pct_clip)
             sc = apply_transform(params, raw).iloc[test_idx]
@@ -52,6 +64,28 @@ def _value_power_report(panel: pd.DataFrame, cfg: CandidatePreReg, holdout_frac:
     return {"folds": folds, "power_limited": power_limited, "positive_floor": positive_floor}
 
 
+def _value_power_report(panel: pd.DataFrame, cfg: CandidatePreReg, holdout_frac: float,
+                        raw_fn: RawFn, positive_floor: int = 25) -> dict:
+    return _raw_power_report(panel, cfg, holdout_frac, raw_fn, VALUE, positive_floor)
+
+
+def _fundamental_power_report(panel: pd.DataFrame, cfg: FundamentalCandidatePreReg,
+                              holdout_frac: float, raw_fn: RawFn) -> dict:
+    return _raw_power_report(panel, cfg, holdout_frac, raw_fn, FUNDAMENTAL_VALUE, 1)
+
+
+def _verify_run_hash_unlock(cfg, prereg_hash: str | None, fixture_path,
+                            run_hash_fn, hash_name: str) -> bool:
+    if prereg_hash is None:
+        return False
+    if fixture_path is None or prereg_hash != run_hash_fn(cfg, fixture_path):
+        raise ValueError(
+            f"holdout unlock requires prereg_hash == {hash_name}(cfg, fixture_path); "
+            "refusing to evaluate the reserved tail with an unverified run-hash"
+        )
+    return True
+
+
 def _verify_holdout_unlock(cfg: CandidatePreReg, prereg_hash: str | None,
                            fixture_path) -> bool:
     """F2 (review hardening, STRICTER than frozen data_floor.py:34): the reserved tail
@@ -59,20 +93,15 @@ def _verify_holdout_unlock(cfg: CandidatePreReg, prereg_hash: str | None,
     fixture bytes) — a non-null string is NOT enough, matching the `HOLDOUT_LEDGER.md`
     contract. Returns True iff a verified run-hash was supplied; RAISES on a supplied-but-wrong
     hash so a careless caller cannot silently touch (and burn) the shared reserved tail."""
-    if prereg_hash is None:
-        return False
-    if fixture_path is None or prereg_hash != candidate_run_hash(cfg, fixture_path):
-        raise ValueError(
-            "holdout unlock requires prereg_hash == candidate_run_hash(cfg, fixture_path); "
-            "refusing to evaluate the reserved tail with an unverified run-hash"
-        )
-    return True
+    return _verify_run_hash_unlock(cfg, prereg_hash, fixture_path, candidate_run_hash,
+                                   "candidate_run_hash")
 
 
-def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
-                      prereg_hash: str | None = None, holdout_frac: float = 0.2,
-                      vcfg: CandidateValidationPreReg = DEFAULT_CANDIDATE_VALIDATION,
-                      fixture_path=None) -> dict:
+def _candidate_metrics_with_raw_fn(panel: pd.DataFrame, cfg, families: tuple[str, ...],
+                                   raw_fn: RawFn, prereg_hash: str | None,
+                                   holdout_frac: float, vcfg, fixture_path,
+                                   run_hash_fn, run_hash_name: str,
+                                   power_fn) -> dict:
     """Candidate bench mirror of floor_metrics: dev gate first, one blinded holdout.
     Report-only; never authorizes sizing; frozen floor untouched. Validation uses the
     CANDIDATE's own N/var_sr surface (Amendment F1, NOT the floor's DEFAULT_VALIDATION),
@@ -80,12 +109,6 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
     The reserved tail is touched ONLY iff the dev gate passes AND `prereg_hash` is a verified
     `candidate_run_hash(cfg, fixture_path)` (review F2); when blinded, even the SPY benchmark is
     computed over the DEV window only so the tail is genuinely never read (review F1)."""
-    families = cfg.families
-
-    def raw_fn(family: str, prices: pd.Series) -> pd.Series:
-        return candidate_raw(family, prices, value_skip=cfg.value_skip,
-                             value_lookback=cfg.value_lookback)
-
     assets = panel.drop(columns=["SPY"]).iloc[cfg.warmup:].reset_index(drop=True)
     sweep = run_dev_sweep_ext(panel, families, cfg, raw_fn=raw_fn, holdout_frac=holdout_frac)
 
@@ -107,7 +130,9 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
     legacy_spy = book_sharpe(spy_all.iloc[:spy_dev_end].pct_change().fillna(0.0))
     if universe == "do_not_run":
         verdict = "UNSUPPORTED"
-    elif gate.passed and _verify_holdout_unlock(cfg, prereg_hash, fixture_path):
+    elif gate.passed and _verify_run_hash_unlock(
+        cfg, prereg_hash, fixture_path, run_hash_fn, run_hash_name
+    ):
         h = run_holdout_ext(panel, families, cfg, sweep.chosen_weights,
                             raw_fn=raw_fn, holdout_frac=holdout_frac)
         delta_lcb = block_bootstrap_diff_lcb(h.ensemble, h.best_family, cfg.bootstrap_block,
@@ -134,7 +159,7 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
          "best_family": sweep.best_family_test_returns},
         vcfg,   # Amendment F1: candidate's own N/var_sr (report-only; never sets `passes`)
     )
-    power = _value_power_report(panel, cfg, holdout_frac, raw_fn)
+    power = power_fn(panel, cfg, holdout_frac, raw_fn)
     return {
         "verdict": verdict, "universe": universe,
         "dev": {"passed": gate.passed, "reasons": gate.reasons, "fold_deltas": sweep.fold_deltas},
@@ -144,3 +169,49 @@ def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
         "margin": float(cfg.margin), "passes": verdict == "PASSED",
         "validation": validation, "power": power,
     }
+
+
+def candidate_metrics(panel: pd.DataFrame, cfg: CandidatePreReg,
+                      prereg_hash: str | None = None, holdout_frac: float = 0.2,
+                      vcfg: CandidateValidationPreReg = DEFAULT_CANDIDATE_VALIDATION,
+                      fixture_path=None) -> dict:
+    families = cfg.families
+
+    def raw_fn(family: str, prices: pd.Series) -> pd.Series:
+        return candidate_raw(family, prices, value_skip=cfg.value_skip,
+                             value_lookback=cfg.value_lookback)
+
+    return _candidate_metrics_with_raw_fn(
+        panel, cfg, families, raw_fn, prereg_hash, holdout_frac, vcfg, fixture_path,
+        candidate_run_hash, "candidate_run_hash", _value_power_report,
+    )
+
+
+def fundamental_candidate_metrics(
+    panel: pd.DataFrame,
+    panel_funda: pd.DataFrame,
+    cfg: FundamentalCandidatePreReg = DEFAULT_FUNDAMENTAL_CANDIDATE,
+    prereg_hash: str | None = None,
+    holdout_frac: float = 0.2,
+    vcfg: FundamentalCandidateValidationPreReg = DEFAULT_FUNDAMENTAL_CANDIDATE_VALIDATION,
+    fixture_path=None,
+) -> dict:
+    """Reading-B candidate floor mirror using the precomputed PIT fundamentals panel.
+
+    `panel_funda` must be built with `build_fundamental_panel(..., warmup=cfg.warmup)`
+    so it shares the positional basis used by candidate_pipeline. The holdout remains
+    blinded unless a verified `fundamental_candidate_run_hash` is supplied.
+    """
+    expected_rows = max(0, len(panel) - cfg.warmup)
+    if len(panel_funda) != expected_rows:
+        raise ValueError(
+            f"panel_funda rows ({len(panel_funda)}) must equal len(panel)-cfg.warmup "
+            f"({expected_rows}); build it with build_fundamental_panel(..., warmup=cfg.warmup)"
+        )
+    raw_fn = make_fundamental_raw(panel_funda)
+    families = cfg.families
+    return _candidate_metrics_with_raw_fn(
+        panel, cfg, families, raw_fn, prereg_hash, holdout_frac, vcfg, fixture_path,
+        fundamental_candidate_run_hash, "fundamental_candidate_run_hash",
+        _fundamental_power_report,
+    )

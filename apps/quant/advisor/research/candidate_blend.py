@@ -8,14 +8,13 @@ from advisor.backtest.portfolio import build_long_flat_book
 from advisor.backtest.splits import inner_blocks
 from advisor.backtest.stats import book_sharpe
 from advisor.research.candidate_signals import VALUE
+from advisor.research.fundamental_value import FUNDAMENTAL_VALUE
 
-# Bench allowlist: the frozen RAW_METRICS registry PLUS the pre-registered research family
-# `value`. The frozen select_weights guard (blend.py:27) is a registry-membership check, not
-# part of the selection algorithm or any acceptance gate; `value` is price-derived and
-# pre-registered, so relative to the frozen registry it is "unknown", not "non-price". This is
-# the ONLY divergence from frozen blend.py; the selection math below is byte-identical and is
-# proven equal to the frozen selector on shared families by the Task-4 golden test.
-_ALLOWED = set(RAW_METRICS) | {VALUE}
+# Bench allowlist: frozen RAW_METRICS plus the two pre-registered research families.
+# The frozen selector guard is a registry-membership check, not selection math. This
+# remains the only divergence from frozen blend.py and is proven equal on shared families
+# by the golden test.
+_ALLOWED = set(RAW_METRICS) | {VALUE, FUNDAMENTAL_VALUE}
 
 
 def _ensemble_book_sharpe(scores_by_fam, weights, prices, caps, cost) -> float:
@@ -31,7 +30,7 @@ def select_weights(train_scores: dict, train_prices: pd.DataFrame, families: tup
                    grid: tuple, lift_threshold: float, cost_per_turn: float,
                    caps: tuple) -> dict:
     """Bench mirror of backtest.blend.select_weights — IDENTICAL except the family guard
-    also admits the pre-registered research `value` family (frozen RAW_METRICS predates it).
+    also admits pre-registered research families (frozen RAW_METRICS predates them).
     Train-only weight selection. Rule A = equal; Rule B deviates onto the grid only with
     >= lift_threshold book-Sharpe gain in >=2 inner train blocks."""
     for f in families:
