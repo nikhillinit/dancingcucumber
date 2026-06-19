@@ -52,6 +52,29 @@ def _print_verdict(m: dict) -> None:
             f"the floor, never unlock the holdout or authorize sizing.",
             flush=True,
         )
+    d = m.get("diagnostics")
+    if d:
+        print(
+            f"floor: risk diagnostics (report-only) -- ensemble Sortino "
+            f"{d['ensemble_sortino']:.2f}, maxDD {d['ensemble_max_drawdown'] * 100:.1f}%; "
+            f"SPY Sortino {d['spy_sortino']:.2f}, maxDD {d['spy_max_drawdown'] * 100:.1f}% "
+            f"(dev-OOS ensemble vs full-window SPY).",
+            flush=True,
+        )
+        c = d["concentration"]
+        rf = d.get("robust_family")
+        rf_s = (f"; minimax-robust family '{rf['family']}' "
+                f"(min fold Sharpe {rf['min_fold_sharpe']:.2f})") if rf else ""
+        if "min_invested_breadth" in c:
+            cflag = "PASS" if c["passes"] else "FAIL"
+            print(
+                f"floor: book concentration (report-only) -- breadth "
+                f"{c['min_invested_breadth']}..{c['median_breadth']:.0f} names, "
+                f"max single {c['max_single_name'] * 100:.0f}%, "
+                f"top-{c['k']} {c['max_top_k'] * 100:.0f}% [{cflag} vs 9/25%/60%]{rf_s}. "
+                f"Report-only: cannot unlock the holdout or authorize sizing.",
+                flush=True,
+            )
 
 
 def main(argv: list[str]) -> int:
