@@ -100,3 +100,45 @@ def test_raw_raises_on_warmup_mismatch():
         assert False, "expected ValueError on panel shorter than prices"
     except ValueError:
         pass
+
+from advisor.research.lazy_prices import (
+    dev_lazy_momentum_corr, dev_cross_sectional_dispersion,
+)
+
+
+def _multi_asset_panel(n=400, names=("AAA", "BBB", "CCC", "DDD")):
+    idx = pd.date_range("2015-01-01", periods=n, freq="B")
+    cols = {a: [100.0 + i + j for i in range(n)] for j, a in enumerate(names)}
+    cols["SPY"] = [400.0 + i for i in range(n)]
+    return pd.DataFrame(cols, index=idx)
+
+
+def _step_records(panel, level_by_asset):
+    # one filing every ~60 trading days, each asset pinned to its own similarity LEVEL
+    recs = []
+    for a, lvl in level_by_asset.items():
+        for k, t in enumerate(panel.index[::60]):
+            d = str(t.date())
+            recs.append(_rec(a, lvl + 0.01 * (k % 3), filing=d, accepted=d,
+                             period=d, avail=d))
+    return recs
+
+
+def test_orthogonality_diagnostic_returns_corr_key():
+    panel = _multi_asset_panel()
+    recs = _step_records(panel, {"AAA": 0.9, "BBB": 0.5, "CCC": 0.3, "DDD": 0.7})
+    panel_lp = build_lazy_prices_panel(recs, panel, warmup=200)
+    c = dev_lazy_momentum_corr(panel, panel_lp, warmup=200, holdout_frac=0.2)
+    assert "momentum" in c                       # report-only; NaN allowed if a leg is flat
+
+
+def test_cross_sectional_dispersion_detects_level_collapse():
+    # Per-asset transform encodes each name vs ITS OWN history, so a big cross-sectional
+    # LEVEL gap (0.9 vs 0.3) does NOT guarantee cross-sectional conviction spread.
+    panel = _multi_asset_panel()
+    recs = _step_records(panel, {"AAA": 0.9, "BBB": 0.5, "CCC": 0.3, "DDD": 0.7})
+    panel_lp = build_lazy_prices_panel(recs, panel, warmup=200)
+    d = dev_cross_sectional_dispersion(panel, panel_lp, warmup=200, holdout_frac=0.2)
+    assert "min_xs_std" in d and "median_xs_std" in d
+    # documents (does not assert a threshold) the collapse the bench transform induces;
+    # the VALUE is what READING_C_RESULT.md reports so a DEV_FAILED is interpretable.
