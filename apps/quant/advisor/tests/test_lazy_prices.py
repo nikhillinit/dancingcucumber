@@ -38,3 +38,30 @@ def test_audit_passes_for_canonical_and_fails_for_lagged():
 
 def test_lazy_prices_family_constant():
     assert LAZY_PRICES == "lazy_prices"
+
+import pandas as pd
+from advisor.research.lazy_prices import build_lazy_prices_panel
+
+
+def _price_panel(dates):
+    idx = pd.to_datetime(dates)
+    return pd.DataFrame({"AAA": range(100, 100 + len(idx)),
+                         "SPY": range(400, 400 + len(idx))}, index=idx).astype(float)
+
+
+def test_panel_is_stepwise_and_pit():
+    panel = _price_panel(["2016-01-04", "2016-02-03", "2016-02-04", "2016-03-01"])
+    recs = [_rec("AAA", 0.92, accepted="2016-02-03", avail="2016-02-03")]
+    out = build_lazy_prices_panel(recs, panel, assets=["AAA"])
+    # before availability -> NaN; on/after -> the similarity, held forward
+    assert pd.isna(out["AAA"].iloc[0])                  # 2016-01-04 (pre-filing)
+    assert out["AAA"].iloc[1] == 0.92                   # 2016-02-03 (available)
+    assert out["AAA"].iloc[2] == 0.92                   # held forward
+    assert out["AAA"].iloc[3] == 0.92
+
+
+def test_panel_unknown_asset_all_nan_and_warmup_slices():
+    panel = _price_panel(["2016-01-04", "2016-02-03", "2016-02-04"])
+    out = build_lazy_prices_panel([], panel, assets=["AAA"], warmup=1)
+    assert len(out) == 2                                 # warmup row dropped
+    assert out["AAA"].isna().all()                       # no records -> neutral

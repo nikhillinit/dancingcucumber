@@ -23,3 +23,39 @@ def audit_text_available_asof(rec: EdgarXbrlRecord) -> bool:
     return rec.available_asof == compute_text_available_asof(
         rec.filing_date, rec.accepted_datetime
     )
+
+import pandas as pd
+
+from advisor.research.fundamental_value import select_asof  # generic PIT selector
+
+
+def build_lazy_prices_panel(
+    records: list[EdgarXbrlRecord],
+    panel: pd.DataFrame,
+    assets: list[str] | None = None,
+    *,
+    warmup: int = 0,
+    concept: str = SIMILARITY_CONCEPT,
+) -> pd.DataFrame:
+    """Date-indexed similarity panel aligned row-for-row to `panel` (floor_prices, a
+    DatetimeIndex of adjusted closes), sliced [warmup:] and reset to a positional
+    RangeIndex so it shares candidate_pipeline's
+    `prices_all = panel[assets].iloc[warmup:].reset_index(drop=True)` basis. Per row:
+    the latest FilingSimilarity available as-of that date (select_asof; a STEP FUNCTION
+    held between filings). Unavailable -> NaN (the percentile transform maps NaN -> 0 ->
+    flat). NO price recompute and NO split handling: similarity is a dimensionless ratio,
+    basis-free. Date threading is done HERE, never inside raw_fn."""
+    if assets is None:
+        assets = [c for c in panel.columns if c != "SPY"]
+    dates = list(panel.index)
+    cols: dict[str, list[float]] = {}
+    for a in assets:
+        a_records = [r for r in records if r.asset == a]  # shrink select_asof's scan
+        col: list[float] = []
+        for t in dates:
+            as_of = t.date() if hasattr(t, "date") else t
+            rec = select_asof(a_records, a, concept, as_of)
+            col.append(float(rec.value) if rec is not None else float("nan"))
+        cols[a] = col
+    funda = pd.DataFrame(cols, index=range(len(dates)))
+    return funda.iloc[warmup:].reset_index(drop=True)
