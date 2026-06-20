@@ -142,3 +142,32 @@ def test_cross_sectional_dispersion_detects_level_collapse():
     assert "min_xs_std" in d and "median_xs_std" in d
     # documents (does not assert a threshold) the collapse the bench transform induces;
     # the VALUE is what READING_C_RESULT.md reports so a DEV_FAILED is interpretable.
+
+from advisor.data.filing_text_fetch import tokenize, cosine_tfidf, build_similarity_row
+
+
+def test_tokenize_is_deterministic_lowercase_words():
+    assert tokenize("The QUICK brown fox; fox!") == ["the", "quick", "brown", "fox", "fox"]
+
+
+def test_cosine_identical_is_one_and_disjoint_is_zero():
+    a = tokenize("alpha beta gamma alpha")
+    assert abs(cosine_tfidf(a, a) - 1.0) < 1e-9
+    assert cosine_tfidf(tokenize("alpha beta"), tokenize("gamma delta")) == 0.0
+
+
+def test_cosine_partial_overlap_in_unit_interval():
+    s = cosine_tfidf(tokenize("alpha beta gamma"), tokenize("alpha beta delta"))
+    assert 0.0 < s < 1.0
+
+
+def test_build_similarity_row_sets_availability_without_lag():
+    row = build_similarity_row(
+        asset="AAA", cik="0000320193", accession="acc1", form="10-K",
+        report_period_end="2015-12-31", filing_date="2016-02-01",
+        accepted_datetime="2016-02-03T16:30:00", similarity=0.91,
+    )
+    assert row["concept"] == "FilingSimilarity"
+    assert row["value"] == "0.91"
+    assert row["available_asof"] == "2016-02-03"     # max(filing, accepted), no +90
+    assert row["denominator_policy"] == "cosine_tfidf_yoy_same_form"
