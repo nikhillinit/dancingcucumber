@@ -65,3 +65,38 @@ def test_panel_unknown_asset_all_nan_and_warmup_slices():
     out = build_lazy_prices_panel([], panel, assets=["AAA"], warmup=1)
     assert len(out) == 2                                 # warmup row dropped
     assert out["AAA"].isna().all()                       # no records -> neutral
+
+from advisor.research.lazy_prices import make_lazy_prices_raw
+
+
+def test_raw_is_similarity_not_its_complement():
+    # SIGN GUARD: HIGH similarity = non-changer = LONG leg. raw MUST equal similarity,
+    # never 1-similarity (that would long the changers = the wrong/short leg ->
+    # DEV_FAILED by construction).
+    panel_lp = pd.DataFrame({"NONCHANGER": [0.97, 0.97], "CHANGER": [0.20, 0.20]})
+    raw_fn = make_lazy_prices_raw(panel_lp)
+    hi = raw_fn(LAZY_PRICES, pd.Series([100.0, 101.0], name="NONCHANGER"))
+    lo = raw_fn(LAZY_PRICES, pd.Series([100.0, 101.0], name="CHANGER"))
+    assert hi.iloc[0] == 0.97 and lo.iloc[0] == 0.20     # raw == similarity
+    assert hi.mean() > lo.mean()                          # non-changer ranks long
+
+
+def test_raw_dispatches_momentum_to_base_and_unknown_to_nan():
+    panel_lp = pd.DataFrame({"AAA": [0.5, 0.5, 0.5]})
+    raw_fn = make_lazy_prices_raw(panel_lp)
+    # momentum delegates to the frozen price raw_metric (not the panel)
+    mom = raw_fn("momentum", pd.Series([1.0] * 130, name="AAA"))
+    assert len(mom) == 130
+    # unknown asset on the lazy_prices family -> all-NaN neutral
+    unk = raw_fn(LAZY_PRICES, pd.Series([1.0, 2.0], name="ZZZ"))
+    assert unk.isna().all()
+
+
+def test_raw_raises_on_warmup_mismatch():
+    panel_lp = pd.DataFrame({"AAA": [0.5]})               # 1 row
+    raw_fn = make_lazy_prices_raw(panel_lp)
+    try:
+        raw_fn(LAZY_PRICES, pd.Series([1.0, 2.0, 3.0], name="AAA"))  # 3 rows
+        assert False, "expected ValueError on panel shorter than prices"
+    except ValueError:
+        pass
