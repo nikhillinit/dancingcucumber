@@ -59,3 +59,36 @@ def build_lazy_prices_panel(
         cols[a] = col
     funda = pd.DataFrame(cols, index=range(len(dates)))
     return funda.iloc[warmup:].reset_index(drop=True)
+
+from typing import Callable
+
+from advisor.backtest.continuous_signals import raw_metric
+
+
+def make_lazy_prices_raw(
+    panel_lp: pd.DataFrame,
+    base_raw_fn: Callable[[str, pd.Series], pd.Series] = raw_metric,
+) -> Callable[[str, pd.Series], pd.Series]:
+    """Build the `raw_fn` candidate_pipeline expects: `(family, prices) -> Series`.
+
+    Dispatch: `lazy_prices` -> precomputed panel lookup; any other family -> base_raw_fn
+    (the frozen price raw_metric, which handles momentum). SIGN: raw = the similarity
+    itself — HIGH similarity = 'non-changer' = the long leg, so the percentile transform
+    ranks high-similarity names long. Using `1 - similarity` would invert to the short
+    leg. The pipeline passes a POSITIONAL Series (RangeIndex, `.name`=asset); panel_lp is
+    aligned to the same warmup-sliced basis, so `.reindex(prices.index)` aligns for both
+    the dev sweep and the holdout. Unknown asset -> all-NaN (neutral). A panel shorter
+    than prices means a warmup mismatch -> raise loudly rather than silently misalign."""
+    def _raw(family: str, prices: pd.Series) -> pd.Series:
+        if family == LAZY_PRICES:
+            name = prices.name
+            if name not in panel_lp.columns:
+                return pd.Series([float("nan")] * len(prices), index=prices.index, name=name)
+            if len(panel_lp) < len(prices):
+                raise ValueError(
+                    f"panel_lp rows ({len(panel_lp)}) < prices rows ({len(prices)}); "
+                    "lazy-prices panel and prices_all must share cfg.warmup"
+                )
+            return panel_lp[name].reindex(prices.index)
+        return base_raw_fn(family, prices)
+    return _raw
