@@ -24,6 +24,14 @@ from advisor.research.candidate_validation_prereg_fundamental import (
     FundamentalCandidateValidationPreReg, DEFAULT_FUNDAMENTAL_CANDIDATE_VALIDATION,
 )
 from advisor.research.fundamental_value import FUNDAMENTAL_VALUE, make_fundamental_raw
+from advisor.research.candidate_prereg_lazy_prices import (
+    LazyPricesCandidatePreReg, DEFAULT_LAZY_PRICES_CANDIDATE,
+    lazy_prices_candidate_run_hash,
+)
+from advisor.research.candidate_validation_prereg_lazy_prices import (
+    LazyPricesCandidateValidationPreReg, DEFAULT_LAZY_PRICES_CANDIDATE_VALIDATION,
+)
+from advisor.research.lazy_prices import LAZY_PRICES, make_lazy_prices_raw
 
 RawFn = Callable[[str, pd.Series], pd.Series]
 
@@ -214,4 +222,37 @@ def fundamental_candidate_metrics(
         panel, cfg, families, raw_fn, prereg_hash, holdout_frac, vcfg, fixture_path,
         fundamental_candidate_run_hash, "fundamental_candidate_run_hash",
         _fundamental_power_report,
+    )
+
+
+def _lazy_prices_power_report(panel: pd.DataFrame, cfg: LazyPricesCandidatePreReg,
+                              holdout_frac: float, raw_fn: RawFn) -> dict:
+    # lazy_prices is a low-frequency step function: positive_floor=1 (like fundamentals)
+    return _raw_power_report(panel, cfg, holdout_frac, raw_fn, LAZY_PRICES, 1)
+
+
+def lazy_prices_candidate_metrics(
+    panel: pd.DataFrame,
+    panel_lp: pd.DataFrame,
+    cfg: LazyPricesCandidatePreReg = DEFAULT_LAZY_PRICES_CANDIDATE,
+    prereg_hash: str | None = None,
+    holdout_frac: float = 0.2,
+    vcfg: LazyPricesCandidateValidationPreReg = DEFAULT_LAZY_PRICES_CANDIDATE_VALIDATION,
+    fixture_path=None,
+) -> dict:
+    """Reading-C candidate floor mirror using the precomputed PIT similarity panel.
+    `panel_lp` must be built with `build_lazy_prices_panel(..., warmup=cfg.warmup)` so it
+    shares candidate_pipeline's positional basis. Holdout stays blinded unless a verified
+    `lazy_prices_candidate_run_hash` is supplied. Reuses the generic injection helper."""
+    expected_rows = max(0, len(panel) - cfg.warmup)
+    if len(panel_lp) != expected_rows:
+        raise ValueError(
+            f"panel_lp rows ({len(panel_lp)}) must equal len(panel)-cfg.warmup "
+            f"({expected_rows}); build it with build_lazy_prices_panel(..., warmup=cfg.warmup)"
+        )
+    raw_fn = make_lazy_prices_raw(panel_lp)
+    return _candidate_metrics_with_raw_fn(
+        panel, cfg, cfg.families, raw_fn, prereg_hash, holdout_frac, vcfg, fixture_path,
+        lazy_prices_candidate_run_hash, "lazy_prices_candidate_run_hash",
+        _lazy_prices_power_report,
     )
