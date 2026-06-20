@@ -171,3 +171,19 @@ def test_build_similarity_row_sets_availability_without_lag():
     assert row["value"] == "0.91"
     assert row["available_asof"] == "2016-02-03"     # max(filing, accepted), no +90
     assert row["denominator_policy"] == "cosine_tfidf_yoy_same_form"
+
+
+from pathlib import Path
+
+from advisor.data.edgar_xbrl_fixture import load_fixture, coverage_in_window
+
+_FIX = Path(__file__).parent / "fixtures" / "lazy_prices_similarity.csv"
+
+
+def test_committed_fixture_loads_audits_and_is_non_degenerate():
+    recs = load_fixture(_FIX)
+    assert recs, "fixture must contain rows"
+    assert all(audit_text_available_asof(r) for r in recs)          # no +90, no fetch-date
+    assert all(0.0 <= r.value <= 1.0 for r in recs)                 # cosine in [0,1]
+    cov = coverage_in_window(recs, date(2015, 1, 1), date(2023, 12, 31))
+    assert cov > 0.5, f"globally-zeroed/lagged signal would fail here, cov={cov}"
