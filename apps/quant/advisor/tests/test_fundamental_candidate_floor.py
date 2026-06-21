@@ -9,10 +9,12 @@ import advisor.research.candidate_floor as candidate_floor
 from advisor.backtest.dev_gate import GateResult
 from advisor.data.edgar_xbrl_fixture import EdgarXbrlRecord
 from advisor.research.candidate_floor import fundamental_candidate_metrics
+from advisor.research.candidate_prereg import DEFAULT_CANDIDATE
 from advisor.research.candidate_prereg_fundamental import (
     DEFAULT_FUNDAMENTAL_CANDIDATE,
     fundamental_candidate_run_hash,
 )
+from advisor.research.candidate_validation_prereg import DEFAULT_CANDIDATE_VALIDATION
 from advisor.research.candidate_validation_prereg_fundamental import (
     DEFAULT_FUNDAMENTAL_CANDIDATE_VALIDATION,
 )
@@ -31,6 +33,23 @@ CFG = dataclasses.replace(
 )
 VCFG = dataclasses.replace(
     DEFAULT_FUNDAMENTAL_CANDIDATE_VALIDATION,
+    declared_trials_N=10,
+    minbtl_max_trials=20,
+)
+PRICE_CFG = dataclasses.replace(
+    DEFAULT_CANDIDATE,
+    warmup=20,
+    folds=3,
+    embargo=2,
+    value_skip=5,
+    value_lookback=20,
+    bootstrap_block=5,
+    bootstrap_draws=25,
+    min_universe_floor=4,
+    min_universe_formal=8,
+)
+PRICE_VCFG = dataclasses.replace(
+    DEFAULT_CANDIDATE_VALIDATION,
     declared_trials_N=10,
     minbtl_max_trials=20,
 )
@@ -131,6 +150,31 @@ def test_fundamental_panel_tail_is_blinded_when_holdout_locked():
     assert after["best_family"] == base["best_family"]
     assert after["weights"] == base["weights"]
     assert after["dev"]["fold_deltas"] == base["dev"]["fold_deltas"]
+
+
+def test_fundamental_path_does_not_perturb_price_only_candidate_metrics():
+    panel = _panel()
+    panel_before = panel.copy(deep=True)
+    base = candidate_floor.candidate_metrics(
+        panel,
+        PRICE_CFG,
+        prereg_hash=None,
+        vcfg=PRICE_VCFG,
+    )
+
+    # Running the source-specific Reading-B path, even with exaggerated fundamentals,
+    # must not mutate or reconfigure the existing price-only Reading-A candidate path.
+    funda = _fundamental_panel(panel) * 100.0
+    fundamental_candidate_metrics(panel, funda, CFG, vcfg=VCFG)
+    after = candidate_floor.candidate_metrics(
+        panel,
+        PRICE_CFG,
+        prereg_hash=None,
+        vcfg=PRICE_VCFG,
+    )
+
+    pd.testing.assert_frame_equal(panel, panel_before)
+    assert after == base
 
 
 def test_fundamental_holdout_unlock_requires_verified_run_hash(monkeypatch):
