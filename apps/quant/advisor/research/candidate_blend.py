@@ -9,12 +9,13 @@ from advisor.backtest.splits import inner_blocks
 from advisor.backtest.stats import book_sharpe
 from advisor.research.candidate_signals import VALUE
 from advisor.research.fundamental_value import FUNDAMENTAL_VALUE
+from advisor.research.lazy_prices import LAZY_PRICES
 
 # Bench allowlist: frozen RAW_METRICS plus the two pre-registered research families.
 # The frozen selector guard is a registry-membership check, not selection math. This
 # remains the only divergence from frozen blend.py and is proven equal on shared families
 # by the golden test.
-_ALLOWED = set(RAW_METRICS) | {VALUE, FUNDAMENTAL_VALUE}
+_ALLOWED = set(RAW_METRICS) | {VALUE, FUNDAMENTAL_VALUE, LAZY_PRICES}
 
 
 def _ensemble_book_sharpe(scores_by_fam, weights, prices, caps, cost) -> float:
