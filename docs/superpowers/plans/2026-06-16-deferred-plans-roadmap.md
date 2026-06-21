@@ -31,3 +31,31 @@ Status note (post-C): Plan 1b (wire validation["passes"] into --enforce) and Pla
 (post-C signal program) are now unblocked-by-prerequisite (C provides the live
 five-family path) but remain gated on a real candidate that clears dev. Do not start
 either until such a candidate exists; the accepted DEV_FAILED floor stays undisturbed.
+
+## Orthogonal-input readings (WS3C/WS3D) — status
+
+- **Reading B — fundamentals (book-to-price), DONE 2026-06-19.** `fundamental_value + momentum`
+  dev gate, holdout BLINDED → genuine `DEV_FAILED`, NOT power-limited (1/4 positive folds; ens
+  0.557 < momentum 0.665 < SPY 0.752). See `research/READING_B_{PREREG,RESULT}.md`.
+- **Reading C — filing-text "Lazy Prices", DONE 2026-06-21 (WS3D).** `lazy_prices + momentum` dev
+  gate, holdout BLINDED → genuine, faithfully-tested `DEV_FAILED` (mode 1). 0/4 positive folds;
+  ens 0.598 < momentum 0.681 < SPY 0.752. Non-degeneracy triplet: coverage 0.975, cross-sectional
+  dispersion median 0.373 (transform-collapse ruled out), orthogonality corr -0.018. Fixture SHA
+  `372a8518…`. See `research/READING_C_{PREREG,RESULT}.md`. NOTE: the full-document TF-cosine +
+  per-asset-percentile construction is in-scope; the canonical cross-sectional-level + section-text
+  Lazy Prices anomaly remains UNTESTED (separate operator prereg decision).
+
+**Load-bearing cross-reading insight:** two INDEPENDENT orthogonal inputs (B fundamentals, C
+filing-text) now fail the dev gate the SAME way — the orthogonal signal dilutes momentum and the
+0.5/0.5 ensemble underperforms the best single family. Reading C is confirmed orthogonal AND
+cross-sectionally discriminating, so this is not "weak/correlated signal." It points at **blend
+non-additivity on this 30-name universe**, not a per-signal defect. The next program should test the
+BLENDING / weighting scheme and the UNIVERSE — not merely "add another orthogonal signal."
+
+## WS3E — Days-to-Cover (short-interest) reading — SEQUENCED FOLLOW-ON (not started)
+The next orthogonal-input reading: SEC/exchange short-interest "days to cover" as a separate
+data subsystem (own plan, mirrors the WS3C/WS3D fixture+adapter+separate-prereg pattern). Given the
+B/C blend-non-additivity finding, WS3E should be paired with a blend/weighting experiment rather than
+run as another standalone equal-weight `dtc + momentum` candidate. A `lazy_prices + fundamental_value`
+two-orthogonal-family candidate (both fixtures now exist) is also available as a WS4 test of whether
+TWO orthogonal inputs together clear dev where each-plus-momentum did not.
