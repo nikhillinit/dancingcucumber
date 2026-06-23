@@ -144,6 +144,24 @@ def _tracked_python_files() -> list[Path]:
     ]
 
 
+def _ignored_paths(paths: list[str]) -> set[str]:
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-z", "--stdin"],
+        cwd=REPO_ROOT,
+        input="\0".join(paths) + "\0",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode not in {0, 1}:
+        result.check_returncode()
+    return {
+        path
+        for path in result.stdout.split("\0")
+        if path
+    }
+
+
 IMPORT_RE = re.compile(r"^\s*import\s+(?P<modules>.+)$")
 FROM_RE = re.compile(r"^\s*from\s+(?P<module>[\.\w]+)\s+import\s+")
 
@@ -208,6 +226,38 @@ def test_no_tracked_python_scripts_at_repo_root() -> None:
         if line.strip() and sep not in line.strip()
     ]
     assert root_scripts == []
+
+
+def test_local_scratch_outputs_are_gitignored() -> None:
+    scratch_paths = [
+        "Council of PMs/example.md",
+        "OVERALL_RECOMMENDATION.md",
+        "ai-logs/hermes/_run_t6.py",
+        "ai-logs/hermes/diag_residual_beta.py",
+        "ai-logs/hermes/runs/broad_smoke.csv",
+        "ai-logs/hermes/runs/hermes-2026-06-23T17-14-46-401Z.json",
+        "ai-logs/hermes/task-1.md",
+        "alpha_vantage_enhanced_analysis.py",
+        "alpha_vantage_enhanced_report.json",
+        "backtest-prob.pdf",
+        "fred_economic_analysis.json",
+        "w33168.txt",
+    ]
+
+    assert _ignored_paths(scratch_paths) == set(scratch_paths)
+
+
+def test_authoritative_tracked_artifacts_are_not_hidden_by_scratch_ignores() -> None:
+    tracked_artifacts = [
+        "README.md",
+        "ai-logs/hermes/b2-classify.md",
+        "ai-logs/hermes/edgar_b1_enumerate_delistings.py",
+        "ai-logs/hermes/runs/edgar_delisting_reasons.csv",
+        "ai-logs/hermes/runs/qc_b3_lean_diagnostic.py",
+        "package.json",
+    ]
+
+    assert _ignored_paths(tracked_artifacts) == set()
 
 
 def test_nested_aihedgefund_directory_absent() -> None:
