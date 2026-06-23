@@ -27,6 +27,13 @@ plan. Do NOT pre-commit forward thresholds (windows, observation counts, Brier l
 until that plan is written against real constraints. SESTM/news sentiment stays
 research-only/conditional for the large-cap book.
 
+> **UPDATE 2026-06-23:** SESTM now has a dedicated plan —
+> `docs/superpowers/plans/2026-06-23-sestm-news-lane-plan.md`. Reframed from a "large-cap book"
+> add-on to a **small/mid-cap** lane (that is where its published alpha lives), gated on a Phase-0
+> free-news-corpus capability matrix + a Phase-1 corpus-swap survival probe before any build, with
+> default STOP at each phase. It is the remaining genuinely-open orthogonal lane after the
+> residual-alpha / market-neutral price lane closed (`notes/2026-06-23-v2-STOP-closeout.md`).
+
 Status note (post-C): Plan 1b (wire validation["passes"] into --enforce) and Plan 3
 (post-C signal program) are now unblocked-by-prerequisite (C provides the live
 five-family path) but remain gated on a real candidate that clears dev. Do not start
