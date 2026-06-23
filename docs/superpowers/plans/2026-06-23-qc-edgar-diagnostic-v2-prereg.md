@@ -96,5 +96,8 @@ If ALL three pass → §6 PASS. If ANY fails → §6 FAIL.
   fixtures; the QC universe/map-file run is operator/Claude-side on QC cloud (NOT a Hermes dispatch).
 - **Deviation rule:** any §3–§5 change after freeze → STOP.
 
-## 8. Freeze record (fill at commit time)
-- Freeze commit hash: `__________` · Date: `__________` · Branch: `__________`
+## 8. Freeze record
+- **Freeze commit hash: `7f54f55`** (`7f54f5583391de74d16906f6a32ff7775c013193`) — locks §3–§5; any
+  later change to those sections voids the run.
+- Date: 2026-06-23 · Branch: `exec/qc-source-integrity-diagnostic-prereg`
+- §8 record added in the immediately-following commit (provenance only; §3–§5 byte-identical).
