@@ -48,6 +48,12 @@ reach that cross-section survivorship-safely (no keyless delisted-price source).
 - The delisted worst-names that would populate a short/bottom decile are missing → long-side is
   upward-biased and short-side alpha is understated. A **positive** information ratio here is an
   **UPPER bound**.
+- The inflation is **direction-specific**: it hits contrarian/reversal families (value,
+  mean_reversion) hardest, because the missing names are the cheap-stocks-that-fell-and-delisted
+  those signals would buy.
 - A **RED** (all families' info ratio ≤ 0) is conclusive **only for large-cap survivors**. It does
   NOT prove price-only signals are dead on a genuine mid/small-cap universe — that requires a keyed,
   delisting-aware source and remains untested.
+- **GREEN is NON-DISCRIMINATING, not a go-signal.** The screen's `max-over-families > 0` verdict
+  also fires GREEN on the DEV_FAILED floor (via trend) — so GREEN here is inconclusive. See the
+  T0.2b result note `docs/superpowers/notes/2026-06-23-broad-universe-residual-screen-result.md`.
