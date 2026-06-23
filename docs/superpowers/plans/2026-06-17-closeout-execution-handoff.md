@@ -1,9 +1,16 @@
 # Execution Handoff — Priority Dev Roadmap Closeout (Hermes orchestration)
 
-> **How to use this file:** Paste the **"FRESH-SESSION KICKOFF PROMPT"** block (bottom of this
-> document) as your first message in a new Claude Code session opened at `C:\dev\AIHedgeFund`.
-> Everything that prompt needs is in this file. This handoff is self-contained: do not assume any
-> prior conversation context.
+> **Status update (2026-06-23): superseded by merged PR #7.** GitHub reports
+> `nikhillinit/dancingcucumber#7` merged on 2026-06-18 at
+> `b5f511931c8018a88941af7ae62953365ff30fab`, and local `main` has advanced past that merge. Do not
+> use this file as an active kickoff prompt for branch creation, push, PR opening, or merge decisions.
+> Keep only the post-merge rails from this handoff: Reading B is report-only, the floor remains
+> `DEV_FAILED`, the reserved holdout is untouched, and no sizing/production/live/broker authorization
+> exists.
+
+> **Historical use only:** this file records the original pre-merge execution instructions for the
+> WS0 -> WS3B slice. The kickoff block below is retained for audit context and must not be pasted into
+> a new session after PR #7.
 
 ---
 
@@ -322,7 +329,7 @@ task after two narrowed re-dispatches; surface it for an operator decision.
 
 ---
 
-## FRESH-SESSION KICKOFF PROMPT (paste this into the new session)
+## HISTORICAL FRESH-SESSION KICKOFF PROMPT (do not run post-PR #7)
 
 ```
 You are Linus Torvalds operating under the repo's workflow contract: you plan, dispatch, and verify;
@@ -344,9 +351,8 @@ WS0 -> WS1 -> WS3A -> cheap WS3B slice via Hermes, exactly as specified, with th
   do not claim a source is chosen, and if no point-in-time source qualifies, stop as RESTATED_PROXY_ONLY.
 - Keep WS2 (credentialed smoke), WS3C, WS4, WS5 unstarted.
 
-Branch first (exec/closeout-ws0-ws3b), one commit per workstream, do not push. When the slice is done
-and all checks are green, hand back a closeout note (commits, secret-scan result, WS3B decision) and
-ask before merging to main.
+Historical only: the branch-first and merge-pending instructions in this prompt were fulfilled by
+merged PR #7. Do not execute this prompt in the post-merge repo state.
 
 Start by confirming branch/SHA and a green pytest baseline, then proceed WS0 first.
 ```
