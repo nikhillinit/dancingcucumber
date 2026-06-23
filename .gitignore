@@ -9,3 +9,47 @@ __pycache__/
 *.pyo
 *.log
 nul
+
+# Local editor / agent scratch
+/.specstory/history/
+/.vscode/
+/Council of PMs/
+
+# Ad hoc root analysis scripts are intentionally scratch-only.
+/*.py
+
+# Root-level throwaway analysis outputs
+/EVALUATION_RESPONSE.md
+/FIDELITY_TRADE_ORDERS.md
+/FINAL_CONSENSUS_REPORT.md
+/INSIDER_13F_INTELLIGENCE.md
+/OVERALL_RECOMMENDATION.md
+/alpha_vantage_enhanced_report.json
+/aqr_extracted.txt
+/backtest-prob.pdf
+/comprehensive_fundamental_report.json
+/fred_economic_analysis.json
+/holistic_portfolio_synthesis.json
+/integrated_portfolio_report.json
+/my_portfolio.json
+/persona_analysis_results.json
+/personalized_recommendations.json
+/portfolio_integration.json
+/test_results.json
+/w33168.txt
+/wmu.pdf
+
+# Hermes local run dumps / worker scratch
+/ai-logs/hermes/_run_*.py
+/ai-logs/hermes/build_broad_fixture.py
+/ai-logs/hermes/c-task-*.md
+/ai-logs/hermes/diag_*.py
+/ai-logs/hermes/lane-b-task-*.md
+/ai-logs/hermes/review-*.md
+/ai-logs/hermes/runs/broad_*.csv
+/ai-logs/hermes/runs/broad_*.json
+/ai-logs/hermes/runs/edgar_b2_filings.csv
+/ai-logs/hermes/runs/hermes-*.json
+/ai-logs/hermes/task-*.md
+/ai-logs/hermes/univ-t0-*.md
+/ai-logs/hermes/ws*.md
