@@ -39,11 +39,10 @@
 - Escalate unclear authority before changing protected floor files.
 - Keep this checklist ahead of archived legacy passages.
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## Overview
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 A production-ready options flow tracking system has been successfully implemented for the AI hedge fund, targeting 5-6% annual alpha generation through institutional options flow analysis and smart money tracking.
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## System Components
 
@@ -68,7 +67,6 @@ A production-ready options flow tracking system has been successfully implemente
   - Risk management testing
   - Performance tracking validation
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 3. Integration Demo: `options_flow_integration_demo.py`
 - **Purpose**: Production deployment demonstration
 - **Features**:
@@ -76,7 +74,6 @@ A production-ready options flow tracking system has been successfully implemente
   - Alpha generation across market scenarios
   - Production report generation
   - Integration status validation
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## Technical Architecture
 
@@ -208,7 +205,6 @@ The system monitors options flow for the following symbols:
 - Alpha realization tracking
 - Risk metric evolution
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## Production Deployment Status
 
 ### ✅ Completed Components
@@ -226,7 +222,6 @@ The system monitors options flow for the following symbols:
 - Risk controls functioning properly
 - Integration points validated
 - Production readiness certified
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## Usage Examples
 
@@ -302,20 +297,15 @@ The comprehensive options flow tracking system successfully meets all specified 
 ✅ **Calculates expected alpha** targeting 5-6% annually
 ✅ **Creates monitoring and alert systems**
 ✅ **Simulates real options flow data** and analysis
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ✅ **Production-ready implementation** with clear trading recommendations
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 ✅ **Integration compatibility** with broader external intelligence system
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 The system is fully operational and ready for immediate deployment in the AI hedge fund's trading infrastructure.
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 **System Status**: PRODUCTION READY
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 **Deployment Date**: 2025-09-24
 **Integration**: Compatible with External Intelligence System
 **Expected Performance**: 5-6% Annual Alpha Target
+<!-- AIHF_TRUTH_ARCHIVE_END -->
