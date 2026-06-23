@@ -139,6 +139,30 @@ def test_b2_defm14a_and_listing_rule_paths():
     assert classify_reason(with_rule, []) is ReasonClass.PERFORMANCE
 
 
+def test_b2_voluntary_and_procedural_listing_rules_are_unknown_without_8k():
+    voluntary = EdgarDelisting(
+        cik="7",
+        company="Voluntary Exit Inc",
+        form="25",
+        filing_date=date(2020, 5, 1),
+        accession="c",
+        filename="c.txt",
+        cited_rule="voluntary withdrawal under 12d2-2(c)",
+    )
+    procedural = EdgarDelisting(
+        cik="7",
+        company="Procedural Removal Inc",
+        form="25",
+        filing_date=date(2020, 5, 1),
+        accession="d",
+        filename="d.txt",
+        cited_rule="removed under 12d2-2(d)",
+    )
+
+    assert classify_reason(voluntary, []) is ReasonClass.UNKNOWN
+    assert classify_reason(procedural, []) is ReasonClass.UNKNOWN
+
+
 def _qc_row(**overrides):
     row = {
         "qc_symbol": "ABC",

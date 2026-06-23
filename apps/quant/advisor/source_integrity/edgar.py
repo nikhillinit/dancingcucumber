@@ -163,8 +163,6 @@ def _listing_standard_signal(cited_rule: str) -> bool:
             "continued listing",
             "listing standard",
             "12d2-2(b)",
-            "12d2-2(c)",
-            "12d2-2(d)",
         )
     )
 
