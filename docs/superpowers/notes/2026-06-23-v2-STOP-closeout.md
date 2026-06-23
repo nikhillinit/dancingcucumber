@@ -44,5 +44,8 @@ is the finding.
 - **v3** — only if the operator elects it cold, accepting the post-hoc critique.
 
 ## Disposition
-Lane CLOSED. Branch `exec/qc-source-integrity-diagnostic-prereg` holds the full frozen record (v1
-`f863c56`, v2 `7f54f55`) + the B1/B2 build + this closeout; NOT pushed; main untouched `697ee47`.
+Lane CLOSED. The frozen v1/v2 record, B1/B2 build evidence, mappability ceiling, and this closeout
+have since been reconciled onto `main`; current execution baseline is `8722630` (`Merge pull request
+#16 from nikhillinit/fix/source-integrity-listing-standard-b-only`). This disposition remains negative
+and report-only: no frozen-v2 continuation, v3 setup, production authorization, or holdout access is
+granted by this artifact.
