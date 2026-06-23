@@ -106,5 +106,8 @@ If ALL three pass → see §6 PASS. If ANY fails → §6 FAIL.
 - **Deviation rule:** any change to §3–§5 after freeze, or any forbidden §2 metric appearing in the
   artifact, voids the run → STOP.
 
-## 8. Freeze record (fill at commit time)
-- Freeze commit hash: `__________`  · Date: `__________`  · Branch: `__________`
+## 8. Freeze record
+- **Freeze commit hash: `f863c56`** (`f863c566d2d1da3027d2e7c01405d4164ad386d6`) — this commit locks
+  §3–§5; any later change to those sections voids the run.
+- Date: 2026-06-23 · Branch: `exec/qc-source-integrity-diagnostic-prereg`
+- This §8 record was added in the immediately-following commit (provenance only; §3–§5 byte-identical).
