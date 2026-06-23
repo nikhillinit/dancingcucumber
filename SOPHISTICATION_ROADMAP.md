@@ -39,16 +39,13 @@
 - Escalate unclear authority before changing protected floor files.
 - Keep this checklist ahead of archived legacy passages.
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## Current State (December 2024)
 - 92% ML accuracy achieved
 - 25+ systems integrated
 - Congressional tracking active
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 - Paper trading operational
-<!-- AIHF_TRUTH_ARCHIVE_END -->
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - Expected returns: 28-35% annually
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## HIGH-IMPACT IMPROVEMENTS (Next 30 Days)
 
@@ -211,7 +208,6 @@ from newsapi import NewsApiClient
 newsapi = NewsApiClient(api_key='YOUR_KEY')
 ```
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Week 4: Production Deployment
 ```python
 # 1. AWS deployment
@@ -229,7 +225,6 @@ newsapi = NewsApiClient(api_key='YOUR_KEY')
 - A/B testing framework
 - Performance tracking
 ```
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ## ADVANCED TECHNIQUES (3-6 Months)
 
@@ -271,9 +266,7 @@ from transformers import GPT2Model
 
 ### After 180 Days:
 - Institutional-grade system
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - 50-60% annual returns
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - <10% max drawdown
 - Scalable to $10M+ AUM
 
@@ -337,9 +330,7 @@ def send_alert(message):
 ## SUCCESS METRICS
 
 Track these KPIs weekly:
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 1. Model accuracy (target: 95%+)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 2. Sharpe ratio (target: 3.0+)
 3. Win rate (target: 70%+)
 4. Max drawdown (target: <12%)
@@ -354,3 +345,4 @@ python enhanced_data_integration.py
 ```
 
 This roadmap will transform your system from advanced hobbyist to professional hedge fund grade within 90 days.
+<!-- AIHF_TRUTH_ARCHIVE_END -->

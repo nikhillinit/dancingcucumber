@@ -39,6 +39,7 @@
 - Escalate unclear authority before changing protected floor files.
 - Keep this checklist ahead of archived legacy passages.
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## Mission Accomplished: 85% Accuracy Target Achieved
 
 ### Executive Summary
@@ -124,9 +125,7 @@ The BT Framework integration has been successfully implemented, delivering the f
 2. **Advanced Risk Management:** Comprehensive risk metrics suite
 3. **Performance Attribution:** Detailed factor and sector analysis
 4. **Portfolio Optimization:** Constraint-based allocation
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 5. **Production Ready:** Integrated with existing ML and RL systems
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ### BT Framework Enhancement Details
 
@@ -141,7 +140,6 @@ The BT Framework integration has been successfully implemented, delivering the f
 - Volatility-adjusted confidence scoring
 - Sophisticated ensemble prediction
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Production Readiness
 
 #### System Status
@@ -157,7 +155,6 @@ The system is ready for production deployment with:
 - Realistic cost modeling
 - Advanced risk management
 - Comprehensive performance reporting
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ### Conclusion
 
@@ -168,3 +165,4 @@ The BT Framework integration has successfully delivered the final 2% accuracy im
 ---
 *Report generated: September 24, 2024*
 *BT Framework Integration: OPERATIONAL*
+<!-- AIHF_TRUTH_ARCHIVE_END -->

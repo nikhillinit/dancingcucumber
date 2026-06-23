@@ -48,20 +48,38 @@ DENYLIST_PATTERNS = [
         r"go live",
         r"real money|real-money",
         r"paper trading operational",
+        r"start\s+paper\s+trading",
+        r"start\s+paper\s+trad(?:e|ing)\s+today",
+        r"paper\s+trad(?:e|ing)\s+(?:today|immediately|validation|for\s+30\s+days|mode\s+first)",
+        r"begin\s+paper\s+trading|run\s+paper\s+trading",
         r"automated order execution",
         r"Fidelity automation|Fidelity automated",
         r"expected annual alpha",
+        r"annual alpha target",
+        r"expected alpha|expected returns|expected performance",
+        r"alpha generation|alpha generated|alpha boost|alpha vs SPY",
+        r"current pipeline alpha|average expected alpha",
+        r"superior returns|additional profit",
         r"50-70%|50-60% annual|28-35% annual(ly)?",
         r"92% accuracy",
+        r"\d+(?:\.\d+)?%\+?\s+(?:ML\s+)?(?:prediction\s+)?accuracy(?:\s+achieved)?",
+        r"(?:Accuracy|Returns|Sharpe):\s*\d",
+        r"Sharpe Ratio:\s*[\d>]",
+        r"Annual Return:\s*\d",
         r"95%\+",
         r"Sharpe\s?>\s?2\.5",
         r"immediate deployment",
         r"--mode production",
         r"production deployment",
+        r"production (?:performance|monitoring|report|readiness|deployment demonstration|deployment status)",
         r"live deployment",
+        r"live testing",
         r"enable trading",
         r"disable kill switch",
         r"live positions",
+        r"small real positions|real positions",
+        r"profitable trading|consistent profits|quickest path to profits|time to profit",
+        r"current trading signals|portfolio allocation",
         r"graduate to .*live",
         r"automated .*(order|fidelity|trading)",
         r"order placement",
@@ -258,6 +276,26 @@ def test_no_unqualified_denylist_claims_outside_exempt_zones() -> None:
                     break
 
     assert offenders == []
+
+
+def test_denylist_catches_unqualified_legacy_examples() -> None:
+    examples = [
+        "### OPTION 1: Start Paper Trading TODAY (Recommended)",
+        "- **Today**: Start paper trading with simple momentum",
+        "3. Can paper trade immediately",
+        "- **TOTAL EXPECTED ALPHA**: 50-70% annually",
+        "**SYSTEM STATUS: 95% COMPLETE AND PRODUCTION READY**",
+        "- **Current Pipeline Alpha**: Up to 9.49%",
+        "The system is fully operational and ready for immediate deployment.",
+    ]
+
+    missed = [
+        example
+        for example in examples
+        if not any(pattern.search(example) for pattern in DENYLIST_PATTERNS)
+    ]
+
+    assert missed == []
 
 
 def test_qc_edgar_v2_build_plan_is_not_active_after_stop() -> None:

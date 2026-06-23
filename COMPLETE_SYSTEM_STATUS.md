@@ -38,34 +38,27 @@
 - Escalate unclear authority before changing protected floor files.
 - Keep this checklist ahead of archived legacy passages.
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## Current Implementation: 95%+ Accuracy with 50%+ Annual Alpha Target
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
 ## 🎯 CURRENT STATUS SUMMARY
 
 ### ✅ CORE SYSTEMS DEPLOYED
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 1. **Base AI System**: 92% accuracy achieved (original target: 87-91%)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 2. **Multi-Agent Personas**: Warren Buffett, Cathie Wood, Ray Dalio agents active
 3. **External Intelligence**: 6 sources integrated for 30%+ additional alpha
 4. **Historical Data Optimization**: 20+ years of pattern analysis ready
 5. **Zero-Cost Improvements**: All behavioral/timing optimizations implemented
 
 ### 📊 EXPECTED PERFORMANCE METRICS
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - **Base System Alpha**: 19.5% (92% accuracy)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - **Multi-Agent Enhancement**: +5-8%
 - **External Intelligence**: +30% (conservative estimate)
 - **Historical Patterns**: +10-15%
 - **Behavioral/Timing**: +5-10%
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - **TOTAL EXPECTED ALPHA**: 50-70% annually
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ### 💰 VALUE ON $500K PORTFOLIO
 - **Conservative Estimate**: $250,000 annual returns
@@ -78,9 +71,7 @@
 ## 📁 COMPLETED IMPLEMENTATIONS
 
 ### 1. CORE AI SYSTEMS
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - ✅ `final_92_percent_system.py` - Base 92% accuracy system
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - ✅ `production_daily_optimizer.py` - Daily portfolio optimization
 - ✅ `multi_agent_personas.py` - Investment personality agents
 - ✅ `stefan_jansen_integration.py` - Advanced feature engineering
@@ -160,9 +151,7 @@
 ## 🎯 SUCCESS METRICS
 
 ### System Capabilities:
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - ✅ 95%+ prediction accuracy (target: 87-91%)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - ✅ 50%+ annual alpha generation (target: 30%)
 - ✅ 6 external intelligence sources integrated
 - ✅ 3 investment personas active
@@ -170,18 +159,15 @@
 - ✅ $0 additional costs (all free sources)
 - ✅ 100% legal compliance
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Ready for Production:
 - ✅ Daily automated analysis
 - ✅ Fidelity-compatible orders
 - ✅ Risk management integrated
 - ✅ Performance tracking ready
 - ✅ 50-minute daily workflow
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ## 📋 DAILY WORKFLOW (PRODUCTION READY)
 
 ### Morning (8:00 AM - 15 minutes)
@@ -206,27 +192,19 @@
 2. Update tracking spreadsheet
 3. Check for after-hours filings
 4. Prepare for next day
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
 ## 🏆 FINAL ASSESSMENT
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 **SYSTEM STATUS: 95% COMPLETE AND PRODUCTION READY**
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 The AI Hedge Fund has exceeded all original targets:
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - Accuracy: 95%+ (vs 87-91% target)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 - Alpha Generation: 50-70% (vs 30% target)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - Intelligence Sources: 6 integrated (vs 3 planned)
 - Cost: $0 additional (100% free sources)
 - Time Investment: 40 minutes daily
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 **Ready for immediate deployment with expected annual returns of $250,000-350,000 on a $500K portfolio.**
 <!-- AIHF_TRUTH_ARCHIVE_END -->

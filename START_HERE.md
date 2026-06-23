@@ -58,6 +58,7 @@
 
 ---
 
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## 🎯 IMMEDIATE ACTION PLAN
 
 ### OPTION 1: Start Paper Trading TODAY (Recommended)
@@ -151,9 +152,7 @@ python minimal_viable_system.py
 - Compare to SPY benchmark
 - Refine based on results
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Step 4: Go Live Small (WEEK 7+)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - Start with $1,000-5,000
 - Max position: 25%
 - Stop loss: 5% per position
@@ -163,9 +162,7 @@ python minimal_viable_system.py
 
 ## ⚠️ CRITICAL WARNINGS
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 1. **Current codebase uses mock data** - Do NOT trade real money yet
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 2. **Backtests are overly optimistic** - Real results will be lower
 3. **No risk controls active** - Need position limits implemented
 4. **Tax implications** - Short-term gains taxed as income
@@ -227,3 +224,4 @@ python minimal_viable_system.py
 ```
 
 **Remember**: Even Renaissance Technologies started small and built up over years. Start simple, prove it works, then scale.
+<!-- AIHF_TRUTH_ARCHIVE_END -->

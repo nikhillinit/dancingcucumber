@@ -39,15 +39,12 @@
 - Escalate unclear authority before changing protected floor files.
 - Keep this checklist ahead of archived legacy passages.
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
+<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operator document body" -->
 ## 🎯 MISSION ACCOMPLISHED: 92% Accuracy Achievement
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 **Target Range:** 87-91% accuracy
 **Achieved:** 92.0% accuracy (EXCEPTIONAL PERFORMANCE)
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 **Status:** ✅ PRODUCTION READY
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
@@ -162,9 +159,7 @@ C:\dev\AIHedgeFund\
 ```
 ├── accuracy_enhancement_plan.py       # Enhancement strategies
 ├── advanced_model_training.py         # ML training modules
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ├── production_ai_system.py           # Production deployment
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 └── requirements.txt                   # Dependencies
 ```
 
@@ -181,12 +176,9 @@ pip install -r requirements.txt
 ### 2. System Validation
 ```bash
 python test_optimized_ensemble.py
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 # Expected: 92% accuracy achievement
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 ```
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 3. Production Deployment
 ```python
 from optimized_ensemble_system import OptimizedEnsembleSystem
@@ -203,15 +195,12 @@ recommendations = system.generate_optimized_recommendations(['AAPL', 'GOOGL'])
 # Monitor performance
 health = system.performance_monitor.get_health_report()
 ```
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### 4. Live Trading Integration
 - Set up data feeds (Yahoo Finance, FRED API)
 - Implement position sizing with Kelly criterion
 - Configure risk management parameters
 - Enable real-time monitoring and alerts
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
@@ -222,9 +211,7 @@ health = system.performance_monitor.get_health_report()
 - **Sharpe Ratio:** 1.4-1.6
 - **Max Drawdown:** <10%
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 ### Optimized Scenario (92% accuracy - Current)
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 - **Annual Return:** 18-22%
 - **Sharpe Ratio:** 1.6-2.0
 - **Max Drawdown:** <8%
@@ -263,18 +250,14 @@ health = system.performance_monitor.get_health_report()
 - ✅ **Optimization:** 6 advanced techniques implemented
 - ✅ **Monitoring:** Real-time health checks active
 - ✅ **Risk Management:** Kelly criterion + position limits
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 - ✅ **Production Ready:** Comprehensive deployment system
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 ### Next Steps
 1. **Live Deployment:** Begin paper trading validation
 2. **Performance Monitoring:** Track real-world accuracy
 3. **Continuous Optimization:** Regular model retraining
 4. **Scale Testing:** Expand to larger stock universe
 5. **Risk Validation:** Stress testing in various market conditions
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 ---
 
@@ -298,9 +281,7 @@ health = system.performance_monitor.get_health_report()
 
 ## 🏆 FINAL STATUS: MISSION ACCOMPLISHED
 
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy performance claim" -->
 **The AI Hedge Fund Optimized Ensemble System has successfully achieved and exceeded all performance targets, demonstrating exceptional 92% accuracy through advanced machine learning, reinforcement learning, and professional optimization techniques. The system is production-ready and positioned to deliver superior risk-adjusted returns.**
-<!-- AIHF_TRUTH_ARCHIVE_END -->
 
 **Achievement Level: EXCEPTIONAL** 🚀
 
@@ -308,6 +289,5 @@ health = system.performance_monitor.get_health_report()
 
 *Generated: December 2024*
 *System Version: Optimized Ensemble v1.0*
-<!-- AIHF_TRUTH_ARCHIVE_START superseded_by="apps/quant/advisor/backtest/FLOOR_RESULT.md" reason="legacy operational claim" -->
 *Status: Production Ready*
 <!-- AIHF_TRUTH_ARCHIVE_END -->
