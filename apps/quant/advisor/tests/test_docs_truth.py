@@ -258,3 +258,25 @@ def test_no_unqualified_denylist_claims_outside_exempt_zones() -> None:
                     break
 
     assert offenders == []
+
+
+def test_qc_edgar_v2_build_plan_is_not_active_after_stop() -> None:
+    rel_path = "docs/superpowers/plans/2026-06-23-qc-edgar-diagnostic-v2-BUILD-PLAN.md"
+    text = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+    lower_text = text.lower()
+
+    required_context = [
+        "not an active task graph",
+        "2026-06-23-v2-mappability-ceiling.md",
+        "2026-06-23-v2-STOP-closeout.md",
+        "do not run B3/B4/B5",
+    ]
+    missing = [token for token in required_context if token.lower() not in lower_text]
+    assert missing == []
+
+    stale_status_lines = [
+        line
+        for line in text.splitlines()
+        if re.search(r"\|\s*\*\*B[1-5]\*\*.*\|\s*(?:\*\*RUNNING\*\*|TODO\b)", line)
+    ]
+    assert stale_status_lines == []
