@@ -82,5 +82,28 @@ prereg surface (NOT bolted onto PreRegConfig), judged on residual/absolute Sharp
 It burns the MinBTL N-budget → **freeze design before any run; needs operator greenlight.** The
 screen is, at most, a hypothesis generator — and on this data it does not even generate a clean one.
 
+## Cheap-test appendix — structural null (pretotyping, 2026-06-23)
+Riskiest assumption "broad IRs are genuine selection, not panel composition" tested with the
+cheapest discriminating method: 40 seeded *information-less* random long-flat signals through the
+SAME screen on `broad_prices.csv`. Pre-set rule: real IR ≤ null p95 → cheap KILL.
+- **The survivor panel hands ANY long-flat book a positive residual:** null mean **+0.105**, sd
+  0.042, p95 **+0.170**, max +0.187. That +0.10 is the structural/survivorship FLOOR — direct
+  confirmation the panel composition itself pays a positive residual.
+- Real vs null: value +0.42 (**z=7.5**), trend +0.41 (z=7.3), mean_reversion +0.31 (z=4.9),
+  momentum +0.26 (z=3.8) all clear p95 decisively; breakout +0.09 (z=−0.3) and long_momentum −0.03
+  (z=−3.1) are INSIDE the noise.
+- **Verdict: NOT a cheap kill, but NOT a promotion either.** (a) The top families are above pure
+  structural noise — so the GREEN is not *only* panel composition. (b) BUT clearing the random null
+  is a *weaker* bar than the floor's own deflation (DSR) + holdout, which already rejected trend's
+  identical 0.828 / +0.41 — necessary, not sufficient. (c) The random null *under*-captures the
+  contrarian-specific survivorship axis (random signals don't preferentially buy fallers), so
+  value/mean_reversion's excess over the floor stays survivorship-unbounded keyless.
+- **Net (unchanged): INCONCLUSIVE.** The cheap keyless ladder is now exhausted — it ruled out "pure
+  noise" but structurally cannot reach the binding unknowns (contrarian-survivorship + deflation +
+  holdout + the unobservable short leg). The only discriminating next test is a keyed,
+  delisting-aware, point-in-time panel run through deflation+holdout. Cheapest form of that = a
+  ONE-TIME static delisted-aware SAMPLE (a "concierge" rung) before committing to the full automated
+  Phase-1 build.
+
 Driver + raw provenance: `ai-logs/hermes/build_broad_fixture.py`, `ai-logs/hermes/runs/broad_provenance.json`.
 Universe rule + survivorship disclosure: `apps/quant/advisor/tests/fixtures/UNIVERSE_RULE_BROAD.md`.
