@@ -1,0 +1,85 @@
+# WS3C — SEC EDGAR XBRL Point-in-Time Fundamentals: Fixture + Adapter + Candidate Preregistration
+
+> Status: PLANNING-ONLY (greenlit by operator 2026-06-18). Builds WS4's inputs. Does NOT run a holdout, does NOT claim a floor pass. Execution dispatches task-by-task via Hermes solo. Mirrors `docs/superpowers/plans/2026-06-16-workstream-c.md`.
+
+## 0. Defaults adopted (operator may override before dispatch)
+- **Value signal:** book-to-price with a TIMELY price, computed split-invariantly (see "split-invariant formulation" below) — numerator `us-gaap:StockholdersEquity`; shares `CommonStockSharesOutstanding` (fallback `dei:EntityCommonStockSharesOutstanding`). Canonical value factor; orthogonal to price families.
+- **Fixture format:** single long-form git-diffable CSV, one row per accession×concept (concepts include a derived `MarketCapAnchor` row — see T7).
+- **Coverage:** quarterly 2015–2023 (XBRL ≥2009 per WS3B); unavailable periods excluded, never filled.
+- **Candidate shape:** `fundamental_value + momentum` (NOT single-family — a lone family makes the §7.2 ensemble-beats-best-part gate degenerate; structural mirror of Reading A's `value+momentum`).
+- **Split-invariant formulation (REPLACES the original "split-basis bridge"; advisor-verified 2026-06-18):** Do NOT compute per-share `BVPS ÷ adjusted price` — mixing as-reported shares (report-date basis) with adjusted prices (post-split basis) creates a basis mismatch and was the flagged top risk. Instead compute an aggregate ratio rescaled by a same-basis adjusted-price ratio:
+  `bp_timely(asset, t) = (equity_asof / mktcap_anchor) × price_adj(t0) / price_adj(t)`, where `t0 = available_asof` (re-anchored each quarter by T2's `select_asof`) and `mktcap_anchor = shares_asof × raw_close(t0)` (real dollars → basis-free). `equity_asof` and `mktcap_anchor` are split-INVARIANT aggregates; `price_adj(t0)/price_adj(t)` is split-NEUTRAL (one consistent adjusted series). No per-share division across a split date ⇒ no bridge, no split table. Verified: AAPL-style 2:1 split + 20% rise → formula reproduces true book/price exactly. **Irreducible cost:** `mktcap_anchor` needs a RAW (unadjusted) close at `t0` — EDGAR has no prices and `floor_prices` is adjusted-only, so T7 gains a small raw-price fetch (one bar per accession date). Missing raw_close(t0) → that (asset,quarter) is `unavailable`/neutral. Dividend drift in `auto_adjust` ratios is negligible because re-anchoring keeps the rescale window <~1 quarter (one-line code comment, do not gold-plate). NB: `backtest/splits.py` is walk-forward CV folds, NOT stock-split machinery — there was never a stock-split module to extend.
+- **Silent-zeroing trap (highest-severity, caught in review):** the WS3A formula `available_asof = max(report_period_end+90, filing_date, accepted_datetime, snapshot_date)` (spec:67) includes `snapshot_date` — but per spec:54,70-72 that term applies ONLY to dated-snapshot sources. SEC EDGAR is **filing-backed**, so `snapshot_date` MUST be None for every EDGAR row. If it is implemented as the fixture fetch date (T7 runs in 2026), `available_asof ≥ 2026` for every row → adapter emits all-NaN → flat across the entire 2015-2023 window → WS4 records a clean-looking `fundamental_value+momentum` DEV_FAILED that is actually a zeroed-signal false negative. Every other guard (leakage, governance, suite-green) passes silently. Mitigations baked into T1/T4 below: `snapshot_date=None` for EDGAR; a POSITIVE availability test; and a non-degeneracy coverage assertion so a globally-zeroed signal fails the suite, not WS4's science.
+
+## 1. Objective
+Instantiate the WS3A source-agnostic contract for `SEC_EDGAR_XBRL` (QUALIFIES, WS3B) as three committable deterministic artifacts: (a) a frozen PIT XBRL fundamentals **fixture** for the formal universe (30 large-caps + SPY) over 2015–2023; (b) a **read-only deterministic adapter** reconstructing as-of-bounded BVPS and exposing a `fundamental_value` raw signal aligned to `floor_prices.csv`; (c) a **Reading-B candidate preregistration** (own hash + validation surface, fixture SHA pinned) so WS4 can run a `fundamental_value + momentum` candidate through the dev gate. Capability only.
+
+## 2. Non-goals
+No holdout read (every WS3C call uses `prereg_hash=None`; `HOLDOUT_LEDGER.md` stays empty — unlock is WS4). No floor flip: `backtest/`, `tools/floor_data_check.py`, `tools/run-floor.mjs` untouched; `--enforce` stays exit 1. No new fields on `PreRegConfig` (frozen `1ad2ed4a…`) or `CandidatePreReg` (frozen `578cce4b…`, pinned by `tests/test_candidate_prereg.py`). No promotion/sizing/live capital. No network at test/run time — only T7 touches the network.
+
+## 3. Architecture / data flow
+`fetch/freeze (network, operator: EDGAR facts + raw close at each t0 → MarketCapAnchor) → committed CSV fixture → read-only loader → as-of selection (availability rule + amendments) → split-invariant bp_timely panel aligned to floor_prices.csv → positional raw_fn closure (keyed on Series.name) → candidate_pipeline run_dev_sweep_ext → candidate_metrics (prereg_hash=None) → Reading-B PREREG + RESULT docs`.
+
+**Date-threading crux (verified):** `candidate_pipeline.py:50` does `prices_all = panel[assets].iloc[warmup:].reset_index(drop=True)`; `_family_scores` calls `raw_fn(family, prices[c])` — a positionally-indexed Series whose only asset identity is `.name`. raw_fn never sees a date. The fundamentals value MUST be precomputed as a date-indexed panel aligned to `floor_prices.csv` rows BEFORE the positional collapse, then injected via a closure keyed on `.name`/positional index — never an in-raw_fn date lookup.
+
+**Files to create**
+- `apps/quant/advisor/data/edgar_xbrl_fixture.py` — 15-field per-accession record + deterministic CSV loader (NO network). [DONE T1]
+- `apps/quant/advisor/data/edgar_xbrl_fetch.py` — one-time network fetch/freeze writer: EDGAR facts + a raw close per accession date → `MarketCapAnchor` rows (injected `http_get`, declared User-Agent, ≤10 req/s; NOT imported by any test/runtime path).
+- `apps/quant/advisor/research/fundamental_value.py` — `select_asof` [DONE T2] + split-invariant `bp_timely` [T3] + dated panel builder + raw_fn closure factory [T4].
+- `apps/quant/advisor/research/candidate_prereg_fundamental.py` — NEW `FundamentalCandidatePreReg` + `fundamental_candidate_hash` + `fundamental_candidate_run_hash` (separate hash surface).
+- `apps/quant/advisor/research/candidate_validation_prereg_fundamental.py` — NEW `FundamentalCandidateValidationPreReg` (live DSR trial surface; mirrors `CandidateValidationPreReg`).
+- `apps/quant/advisor/tests/fixtures/edgar_xbrl_fundamentals.csv` — frozen committed fixture.
+- `apps/quant/advisor/research/READING_B_PREREG.md`, `READING_B_RESULT.md`.
+- Tests: `tests/test_edgar_xbrl_fixture.py`, `tests/test_fundamental_value.py`, `tests/test_candidate_prereg_fundamental.py`, `tests/test_fundamental_candidate_floor.py`.
+
+**Files modified:** `apps/quant/advisor/research/candidate_floor.py` (additive injected-raw_fn path, frozen `value` semantics untouched), deferred-plans roadmap doc. `candidate_pipeline.py` raw_fn signature stays compatible.
+
+## 4. Task breakdown (each = one Hermes solo dispatch, test-first)
+- **T1 [DONE + committed `214be8b`, 6 tests] — PIT record schema + deterministic loader.** `data/edgar_xbrl_fixture.py`, `tests/test_edgar_xbrl_fixture.py`. WS3A **15** fields (`asset, cik, accession, form, report_period_end, filing_date, accepted_datetime, concept, unit, value, available_asof, superseded_by, amended_flag, missingness_reason, denominator_policy`); loader drops incomplete rows (missing→excluded). **`available_asof` ownership:** it is a STORED fixture field written canonically by T7; T1's loader READS it and AUDITS it by recomputing `max(report_period_end+90, filing_date, accepted_datetime)` with **`snapshot_date` excluded (None for filing-backed EDGAR — spec:54,70-72)** and asserting equality. Done: all 14 fields parse; row missing `value` dropped not zero-filled; the audit recompute matches the stored `available_asof`; **POSITIVE availability test** — a known in-window filing (e.g. a 10-K with `accepted` in 2016) yields `available_asof` in 2016, NOT the fetch date; **non-degeneracy guard** — loader/helper exposes a coverage stat and a test asserts a known multi-name fixture has >0 (target: a sane fraction) of `(asset,date)` cells available inside 2015-2023, so a globally-zeroed signal fails here, not in WS4. Deps: none.
+- **T2 [DONE + committed `559718e`, 4 tests] — As-of selection + amendments.** `research/fundamental_value.py`, `tests/test_fundamental_value.py`. `select_asof(records, asset, concept, as_of)` = latest with **`available_asof <= as_of`** (canonical field; stricter than raw `accepted` — folds in the +90d lag + filing date, no lookahead); amendment used only as-of its own later availability (no backfill). Done: original + 10-K/A asserts strict-lag≠PIT and amendments-separate; missing→`None`. Deps: T1.
+- **T3 — Split-invariant `bp_timely`** (REPLACES "split-basis bridge"). `research/fundamental_value.py` (extend), test. Add `bp_timely(equity_rec, anchor_rec, prices_adj, t)` = `(equity_rec.value / anchor_rec.value) × price_adj(t0) / price_adj(t)`, `t0 = anchor_rec.available_asof` (nearest available trading row if `t0` is not itself a trading day). `equity_rec` = the as-of `StockholdersEquity` record; `anchor_rec` = the as-of `MarketCapAnchor` record (both via T2 `select_asof`, sharing availability so they re-anchor together); either missing → `None` (neutral). Done: **`test_bp_timely_is_split_invariant`** — the advisor-verified scenario (equity 1000, shares 10, raw_close(t0) 50 → anchor 500, bp 2.0; a 2:1 split + 20% rise → price_adj(t0)=25, price_adj(t)=30; `2.0×25/30 == 1.667` == true book/price) — testable with synthetic records, NO fixture/T7 needed; plus missing-anchor→None. Deps: T2. **(Top risk DISSOLVED by formulation — no per-share division across splits.)**
+- **T4 — Dated panel + positional raw_fn closure.** `research/fundamental_value.py` (extend), test. Date-indexed `bp_timely` panel aligned row-for-row to `floor_prices.csv` (as-of per row via `select_asof`, re-anchored per quarter, missing→NaN→flat); `make_fundamental_raw(panel_funda)` returns `(family, prices)->Series` keyed on `prices.name`. Done: leakage test (no value before `available_asof`; no-accession asset → all-NaN neutral; closure index matches positionally). Deps: T3. **Resolves the date-threading crux.**
+- **T5 [DONE + committed `5f109a7`, 4 tests] — Reading-B prereg surface (NEW hash, not an extension).** `research/candidate_prereg_fundamental.py`, `research/candidate_validation_prereg_fundamental.py`, test. `FundamentalCandidatePreReg(families=("fundamental_value","momentum"), value_metric="book_to_price", ...)`; `*_run_hash(cfg, fixture_path)` binds config + fixture bytes; validation instance carries `declared_trials_N`. Done: hashes 64-hex, stable, fixture-byte-sensitive; new surface only (frozen `578cce4b` guarded by its own existing test + full-suite postflight). Deps: none.
+- **T6 — Wire fundamental candidate through candidate_floor.** `research/candidate_floor.py` (additive), `tests/test_fundamental_candidate_floor.py`. **First check reuse:** Lane B already built `research/candidate_blend.py` mirroring `select_weights` for the "candidate with an extra family" case ([[lane-b-candidate-plan]]); reuse/extend that injected-raw_fn path rather than adding a parallel one (KISS; keeps the floor-adjacent surface small). `fundamental_candidate_metrics(panel, panel_funda, cfg, prereg_hash=None, ...)` reuses `run_dev_sweep_ext`/`candidate_metrics` with `raw_fn=make_fundamental_raw(...)`. Done: full schema keys; `prereg_hash=None ⇒ holdout None, passes False`; reserved-tail mutation leaves dev outputs invariant; **assert the fundamental family is non-degenerate over the dev folds (per-fold positive-train count > 0)** so the WS4 verdict reflects signal, not zeros. Deps: T4, T5.
+- **T7 — Fetch/freeze the committed fixture. NETWORK — operator/Hermes-with-network; NOT in pytest gate.** `data/edgar_xbrl_fetch.py` → writes `tests/fixtures/edgar_xbrl_fundamentals.csv`. (a) Pull `data.sec.gov` companyconcept/submissions for the 30 CIKs (declared User-Agent, ≤10 req/s) → `StockholdersEquity` + `CommonStockSharesOutstanding` rows. (b) For each accession, fetch a RAW (unadjusted) close at its `available_asof` (`t0`) from a price source, and emit a derived `MarketCapAnchor` row: `value = shares_asof × raw_close(t0)`, `unit=USD`, `denominator_policy="as_reported_shares_x_raw_close_at_avail"`, sharing `available_asof` with its filing. Missing raw_close(t0) → emit NO anchor row (that quarter stays neutral). **Canonical `available_asof` owner:** computed as `max(report_period_end+90, filing_date, accepted_datetime)`, **`snapshot_date` omitted (filing-backed)** — NEVER the fetch date. The `concept` column is a free string, so `MarketCapAnchor` adds NO schema change to T1's 15 fields. Done: fixture loads under T1 with zero parse errors AND passes T1's audit + positive-availability + non-degeneracy checks; SHA-256 recorded. Injected `http_get` makes parse/availability/anchor logic unit-testable offline. Deps: T1, T3 (anchor schema convention).
+- **T8 — Reading-B PREREG/RESULT docs + roadmap.** `READING_B_PREREG.md`, `READING_B_RESULT.md`, roadmap. Record fixture path+SHA, both hashes, frozen construction, dev-gate verdict (`prereg_hash=None`, holdout blinded), **and the fundamental-family coverage stat** (fraction of in-window cells available + per-fold positive-train counts) so any future DEV_FAILED is provably signal-driven, not a zeroed-signal artifact. Done: `test_docs_truth`-style assertions pass; HOLDOUT_LEDGER untouched. Deps: T6, T7.
+
+**Dispatch order:** T1 ✓ → T2 ✓ → **T3 (next) → T4** → T6; T5 ✓; T7 after T3 (needs anchor convention; operator-run, network); T8 last. Suite: baseline 203 → 217 after T1+T2+T5 committed.
+
+## 5. Open decisions for the operator
+All four locked to recommended defaults in §0. Override any before Hermes dispatch; the highest-stakes is the value signal (book-to-price vs e.g. earnings yield).
+
+## 6. Governance checklist
+- Immutable `PreRegConfig`: never touched. / Immutable `CandidatePreReg`: WS3C creates a SEPARATE surface; T5 re-pins `578cce4b…` unchanged.
+- Live DSR trial surface: declared params on the new validation instance mirroring `CandidateValidationPreReg.declared_trials_N`; vestigial `CandidatePreReg.declared_trials_N` unused.
+- Holdout blinded: all calls `prereg_hash=None`; reserved-tail-invariance test (T6) proves it; `HOLDOUT_LEDGER.md` empty.
+- Floor stays DEV_FAILED: `backtest/`, `floor_data_check.py`, `run-floor.mjs` unmodified; `--enforce` exits 1.
+- Contract honored byte-compatibly: T1 = WS3A's exact 15 fields + availability formula; T2 = strict-lag≠PIT + amendments-separate. Instantiation, not a fork.
+- No lookahead: T4 leakage test forbids any value before `available_asof`; period-end is never the availability date.
+- Determinism / missing→neutral / as-of bounded: loader skips incomplete rows; adapter network-free; NaN→flat. Only T7 touches network, outside the gate.
+- Formal universe / window inherited from the floor (folds=5, embargo=5, warmup=200, holdout_frac=0.20).
+- TDD: every code task ships its test first; suite stays green.
+
+## 7. Verification
+- Per task: `node tools/run-pytest.mjs` (canonical wrapper; ground-truth baseline = **203 passed**, 217 after T1+T2+T5). Focused: `python -m pytest apps/quant/advisor/tests/test_fundamental_value.py -q`.
+- After T6: assert `fundamental_candidate_metrics(..., prereg_hash=None)["holdout"] is None` and `["passes"] is False`.
+- End of WS3C: full suite green; `node tools/run-floor.mjs --enforce` → exit 1 (floor unchanged); `git diff --stat` shows zero changes under `backtest/`, `tools/floor_data_check.py`, `tools/run-floor.mjs`; `HOLDOUT_LEDGER.md` empty. T7 (network) is operator-run outside the gate.
+
+## Critical files
+- `apps/quant/advisor/research/candidate_pipeline.py:50` — positional collapse (date-threading crux)
+- `apps/quant/advisor/research/candidate_floor.py` — candidate_metrics harness to mirror; holdout-blinding discipline
+- `apps/quant/advisor/research/candidate_prereg.py:19,49` — frozen hash surface to NOT extend
+- `apps/quant/advisor/data/provider.py` — Fundamentals + `is_available_asof`, REPORTING_LAG_DAYS=90
+- `docs/superpowers/specs/2026-06-16-reading-b-fundamental-value.md:47-83,104-132` — WS3A 14-field contract + WS3B feasibility
+
+---
+
+## Completion addendum (2026-07-04)
+
+The task checklist above is a historical snapshot and is STALE. Actual outcome:
+the fixture/adapter/prereg chain was completed and consumed by two dev runs, both
+clean negatives — Reading B (fundamental_value+momentum, 2026-06-19, DEV_FAILED,
+not power-limited; see `apps/quant/advisor/research/READING_B_RESULT.md`) and
+Reading C (lazy_prices, 2026-06-21, DEV_FAILED 0/4 folds; see
+`apps/quant/advisor/research/READING_C_RESULT.md`). Holdout was never touched.
+This plan is CLOSED. Do not execute tasks from it.
