@@ -1,9 +1,11 @@
 # Validation-Harness-as-Asset Design — Internal Governance Package
 
 **Date:** 2026-07-05
-**Status:** REVIEWED — CEO pass (HOLD SCOPE, 6 findings applied), eng pass (3 findings
-applied), outside voice (Codex, 8 findings: 6 applied, 1 rejected as decided-scope
-re-litigation, 1 operator-decided)
+**Status:** REVIEWED + DEBATE-AMENDED — CEO pass (HOLD SCOPE, 6 findings applied),
+eng pass (3 findings applied), outside voice (Codex, 8 findings: 6 applied, 1
+rejected as decided-scope re-litigation, 1 operator-decided). Amended 2026-07-05
+after the Hermes debate on the execution plan (run hermes-2026-07-05T12-27-27-299Z):
+chain-tip footer added — a bare hash chain cannot catch tail deletion.
 **Type:** Packaging/documentation design. Not a prereg; no thresholds are frozen here.
 **Provenance:** Reframe (a) of `docs/superpowers/notes/2026-07-04-program-review-memo.md`,
 elected by the operator 2026-07-05 (memo decision point 1, recommended default).
@@ -80,14 +82,18 @@ memo itself (not all eight have a dedicated closeout — stating that beats faki
 Append rule: one row per lane closeout, added in the closeout commit. Memos remain
 frozen point-in-time snapshots; this file carries the record forward.
 
-Append-only is machine-checked by a **row hash chain** (threat model: the
-stale-status-doc failure mode from PRs #17/#18 — sloppy edits, not adversaries).
-Every data row ends with a short chain-hash column: `sha256(prev_chain_hash +
-row_text)[:12]`. The conformance test recomputes the chain from row 1; ANY edit,
-reorder, or deletion of ANY row — seed or appended — breaks the chain and fails
-loudly. Append ceremony is minimal: on mismatch the test's failure message prints the
-expected chain hash for the new row, so appending = write the row, run pytest once,
-paste the printed hash. No helper script, no new files.
+Append-only is machine-checked by a **row hash chain plus a chain-tip footer**
+(threat model: the stale-status-doc failure mode from PRs #17/#18 — sloppy edits,
+not adversaries). Every data row ends with a short chain-hash column:
+`sha256(prev_chain_hash + row_text)[:12]`; the file ends with
+`Chain tip: <hash> over <N> rows`. The conformance test recomputes the chain from
+row 1 and checks the tip: any edit, reorder, or interior deletion breaks the chain;
+tail deletion breaks the tip footer (a shorter chain is internally valid — the tip
+pins length, per debate finding hermes-2026-07-05). Stated honestly: a deliberate
+rewrite of rows AND footer together defeats this; that is git-history territory, not
+this guard's job. Append ceremony: write the row, run pytest once, paste the printed
+hash, update the footer. No helper script, no new files. Exactly one table lives in
+the file (enforced), so a future second table cannot pollute the chain.
 
 ### 3.4 `docs/superpowers/harness/templates/`
 - `prereg-template.md` — hypothesis; universe/data; frozen criteria/thresholds;
@@ -149,9 +155,10 @@ so each check is unit-testable against synthetic inputs. Tests:
    two-line citation is verified as a pinned special case (immediate value: the most
    recent freeze claim is machine-checked on day one). Subprocess in list form,
    `shell=False`. (Precedent for shelling to git inside a test: `test_docs_truth.py`.)
-4. **PROGRAM_RECORD hash chain** — recompute the row hash chain (§3.3) from row 1;
-   any edit, reorder, or deletion of any row fails with the offending row named and
-   the expected chain hash printed.
+4. **PROGRAM_RECORD hash chain + tip** — recompute the row chain (§3.3) from row 1
+   (header-anchored parse; exactly one table; six cells per row) and verify the tip
+   footer (final hash + row count — catches tail deletion, which a chain alone
+   cannot). Failure names the offending row and prints the expected hash.
 5. **Template self-check** — the three templates exist and themselves carry the
    required anchors (including the canonical citation line with `<...>`
    placeholders), so template drift is caught.
