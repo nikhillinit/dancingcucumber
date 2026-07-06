@@ -83,3 +83,4 @@ def test_warmup_flat_rows_ignored():
     assert report["min_breadth"] == 0
     # ...but the invested-only breadth floor stays diversified.
     assert report["min_invested_breadth"] == 10
+    assert report["median_invested_breadth"] == 10
