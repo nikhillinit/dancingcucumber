@@ -46,3 +46,9 @@ def test_empty_series_guards_return_zero():
     assert downside_deviation(empty) == 0.0
     assert sortino(empty) == 0.0
     assert max_drawdown(empty) == 0.0
+
+
+def test_sortino_zero_sentinel_when_no_downside():
+    # dd == 0 (never lost) returns the same 0.0 sentinel as empty input;
+    # inf would break strict-JSON report output.
+    assert sortino(pd.Series([0.01] * 10)) == 0.0

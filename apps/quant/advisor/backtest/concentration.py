@@ -57,6 +57,7 @@ def passes_concentration(book: pd.DataFrame, *, min_breadth: int = 9,
 
     report = concentration_report(book, k=k)
     report["min_invested_breadth"] = breadth_floor
+    report["median_invested_breadth"] = float(breadth(invested).median()) if len(invested) else 0.0
     report["thresholds"] = {
         "min_breadth": min_breadth,
         "max_single_name": max_single_name,

@@ -14,6 +14,34 @@ from advisor.backtest.validation import validation_report
 from advisor.backtest.validation_prereg import DEFAULT_VALIDATION
 
 
+# Report-only diagnostics adapted from the Public-Portfolio-Challenge review:
+# downside risk (Sortino / maxDD), book concentration, and a minimax-robust
+# family pick. These NEVER gate the verdict, unlock the holdout, or size capital.
+def build_diagnostics(sweep, spy_returns: pd.Series) -> dict:
+    conc_ok, conc_report = (passes_concentration(sweep.ensemble_book)
+                            if not sweep.ensemble_book.empty else (False, {}))
+    robust = None
+    fam_folds = {f: v for f, v in sweep.family_fold_sharpes.items() if v}
+    if fam_folds:
+        pick = minimax_select(fam_folds)
+        robust = {"family": pick.candidate_key,
+                  "min_fold_sharpe": pick.min_score,
+                  "mean_fold_sharpe": pick.mean_score}
+    return {
+        "ensemble_sortino": sortino(sweep.ensemble_test_returns),
+        "ensemble_max_drawdown": max_drawdown(sweep.ensemble_test_returns),
+        "best_family_sortino": sortino(sweep.best_family_test_returns),
+        "spy_sortino": sortino(spy_returns),
+        "spy_max_drawdown": max_drawdown(spy_returns),
+        "spy_n_obs": int(len(spy_returns)),
+        "spy_window": "dev_oos",
+        "concentration": {"passes": conc_ok,
+                          "computed": not sweep.ensemble_book.empty,
+                          **conc_report},
+        "robust_family": robust,
+    }
+
+
 def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | None = None,
                   families: tuple | None = None, holdout_frac: float = 0.2) -> dict:
     """Run the v2 floor: dev gate first, then one blinded holdout evaluation."""
@@ -63,28 +91,11 @@ def floor_metrics(panel: pd.DataFrame, cfg: PreRegConfig, prereg_hash: str | Non
         DEFAULT_VALIDATION,
     )
 
-    # Report-only diagnostics adapted from the Public-Portfolio-Challenge review:
-    # downside risk (Sortino / maxDD), book concentration, and a minimax-robust
-    # family pick. These NEVER gate the verdict, unlock the holdout, or size capital.
-    spy_dev = panel["SPY"].iloc[cfg.warmup:].pct_change().fillna(0.0)
-    conc_ok, conc_report = (passes_concentration(sweep.ensemble_book)
-                            if not sweep.ensemble_book.empty else (False, {}))
-    robust = None
-    fam_folds = {f: v for f, v in sweep.family_fold_sharpes.items() if v}
-    if fam_folds:
-        pick = minimax_select(fam_folds)
-        robust = {"family": pick.candidate_key,
-                  "min_fold_sharpe": pick.min_score,
-                  "mean_fold_sharpe": pick.mean_score}
-    diagnostics = {
-        "ensemble_sortino": sortino(sweep.ensemble_test_returns),
-        "ensemble_max_drawdown": max_drawdown(sweep.ensemble_test_returns),
-        "best_family_sortino": sortino(sweep.best_family_test_returns),
-        "spy_sortino": sortino(spy_dev),
-        "spy_max_drawdown": max_drawdown(spy_dev),
-        "concentration": {"passes": conc_ok, **conc_report},
-        "robust_family": robust,
-    }
+    spy_full = panel["SPY"].iloc[cfg.warmup:].reset_index(drop=True).pct_change().fillna(0.0)
+    spy_test_rows = [te for _, te in purged_splits(dev_end, cfg.folds, cfg.embargo)]
+    spy_dev_oos = (pd.concat([spy_full.iloc[te] for te in spy_test_rows], ignore_index=True)
+                   if spy_test_rows else spy_full.iloc[:dev_end])
+    diagnostics = build_diagnostics(sweep, spy_dev_oos)
 
     return {
         "verdict": verdict,
