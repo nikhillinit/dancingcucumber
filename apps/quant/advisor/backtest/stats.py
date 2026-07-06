@@ -23,6 +23,12 @@ def downside_deviation(returns: pd.Series, periods_per_year: int = 252,
 
 def sortino(returns: pd.Series, periods_per_year: int = 252,
             target: float = 0.0) -> float:
+    """Annualized Sortino ratio.
+
+    Returns the 0.0 sentinel BOTH for an empty series and for a series with no
+    downside (dd == 0, e.g. all-winning): ambiguous by design — returning inf
+    would break strict-JSON report output. Callers must not read 0.0 as "dead".
+    """
     r = pd.Series(returns).dropna()
     dd = np.sqrt((np.minimum(r - target, 0.0) ** 2).mean()) if len(r) else 0.0
     if len(r) == 0 or dd == 0:
