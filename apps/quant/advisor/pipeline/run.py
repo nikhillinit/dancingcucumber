@@ -27,6 +27,11 @@ async def run_pipeline(ticker: str, as_of: date, price: float, net_liq: float,
                        persona_critic=None) -> Decision:
     signals = await asyncio.gather(*(coro(as_of) for coro in family_coros))
     bundle = SignalBundle(ticker=ticker, as_of=as_of, signals=list(signals))
+    if len({s.skill_weight for s in bundle.signals}) > 1:
+        raise ValueError(
+            "Non-uniform skill weights are rejected until a validated calibration exists; "
+            "see docs/superpowers/specs/2026-06-14-ai-advisor-architecture-design.md §8."
+        )
     direction, _ = ensemble_vote(bundle)
     limit = position_limit(net_liq, vol=vol, correlation=correlation)
     alloc = allocate(bundle, price=price, position_limit_dollars=limit)

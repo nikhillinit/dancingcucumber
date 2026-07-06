@@ -19,6 +19,20 @@ def test_confidence_must_be_0_100():
                      confidence=150.0, as_of=date(2024, 1, 2))
 
 
+def test_skill_weight_must_be_non_negative():
+    with pytest.raises(ValidationError):
+        FamilySignal(family="x", direction=Direction.BULLISH,
+                     confidence=80.0, skill_weight=-0.1,
+                     as_of=date(2024, 1, 2))
+
+
+def test_skill_weight_must_not_be_nan():
+    with pytest.raises(ValidationError):
+        FamilySignal(family="x", direction=Direction.BULLISH,
+                     confidence=80.0, skill_weight=float("nan"),
+                     as_of=date(2024, 1, 2))
+
+
 def test_neutral_fallback():
     s = FamilySignal.neutral("value_quality", date(2024, 1, 2))
     assert s.direction is Direction.NEUTRAL
