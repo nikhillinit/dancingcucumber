@@ -28,9 +28,13 @@ turnover and gross exposure. Zero floor coupling; holdout stays blinded; dev fol
   info ratios on the 30-mega-cap floor dev window: **value −0.41, fundamental_value
   −0.32, lazy_prices −0.40** (momentum −0.02 ≈ 0, excluded). A book that SHORTS each
   family's long-flat book and holds a static long **a·SPY** hedge realizes the sign-flipped
-  IR **+0.32..+0.41 in-sample, PRE-COST**. Sources:
-  `docs/superpowers/notes/2026-06-21-blend-futility-residual-alpha.md` (correction header),
-  `ai-logs/hermes/diag_residual_screen_bc.py` (T0.2c readings B/C).
+  IR **+0.32..+0.41 in-sample, PRE-COST**. Committed source of record:
+  `docs/superpowers/notes/2026-06-21-blend-futility-residual-alpha.md` (correction
+  header records all three corrected numbers and the screen convention). The T0.2c
+  B/C measurement script (`ai-logs/hermes/diag_residual_screen_bc.py`) is a LOCAL,
+  gitignored artifact (`.gitignore:46`) — this plan does not depend on it: the reading
+  wiring is reproduced authoritatively inline in T4, and the ±0.02 reproduction
+  tripwire re-derives the numbers at run time.
 - **Known weakness, stated up front:** this is an in-sample sign flip — textbook snooping
   risk. Gate 1 is therefore a **futility screen only**: PASS never asserts alpha; it only
   authorizes designing Gate 2 (one-shot deflated L/S dev run, holdout blinded).
@@ -44,8 +48,9 @@ turnover and gross exposure. Zero floor coupling; holdout stays blinded; dev fol
 
 ## 3. FROZEN kill criterion and cost model
 
-Frozen at this document's commit on `exec/decision5-ls-gate1`. No parameter may change
-afterward; a changed value = a NEW prereg filename (v2), and the original outcome stands
+Frozen at the head commit of PR #26 when the operator merges (pre-merge review
+amendments are part of the freeze process; post-merge, nothing may change). A changed
+value after the freeze = a NEW prereg filename (v2), and the original outcome stands
 (QC-lane lesson: post-hoc goalpost moves are demoted to new eyes-open programs).
 
 - **Families:** `("value", "fundamental_value", "lazy_prices")` — momentum excluded
@@ -68,9 +73,13 @@ afterward; a changed value = a NEW prereg filename (v2), and the original outcom
   point estimate — below that, costs have eaten the effect and Gate 2 is not worth its
   MinBTL budget. A single surviving family is treated as idiosyncratic noise (the
   hypothesis is a multi-family reversal), hence 2-of-3.
-- **One-shot:** exactly one real-data execution. Re-runs permitted ONLY after an ABORT
-  (the tripwire compares against already-published numbers, so it leaks nothing), never
-  after PASS/CLOSED.
+- **One-shot (mechanically enforced, ext review #2):** exactly one real-data execution.
+  The CLI writes `apps/quant/advisor/research/LS_REVERSAL_RESULT.json` (path is a frozen
+  prereg field) on completion, and REFUSES to run when that file exists with verdict
+  PASS/CLOSED — the outcome stands forever. After an ABORT (wiring drift; the tripwire
+  compares against already-published numbers, so it leaks nothing) a rerun requires the
+  explicit flag `--rerun-after-abort "<operator reason>"`; the reason is recorded in the
+  new result. The result JSON is committed by the operator as part of the record ceremony.
 - **Decision rights:** operator records the verdict; agent may determine ABORT/CLOSED
   mechanically but never relaxes a threshold.
 - **Report-only:** no floor run, no holdout access, no `PreRegConfig` change (immutable
@@ -122,6 +131,7 @@ immaterial vs τ_LS = 0.20). NEVER "fix" `book.py` — it would move the floor v
 | `apps/quant/advisor/tests/test_ls_reversal_screen.py` | Create | Identity/monotonicity/verdict/ABORT-suppression tests |
 | `apps/quant/advisor/tests/test_candidate_pipeline.py` | Modify | Turnover/gross exposure reconstruction test |
 | `TODOS.md` | Modify | L/S diagnostics entry: gate becomes "Gate-1 PASS" (Decision 5 picked 2026-07-06) |
+| `apps/quant/advisor/research/LS_REVERSAL_RESULT.json` | NOT in this PR | Created only by the post-merge one-shot (§7.5); its absence is a postflight check |
 
 Expected `backtest/**` diffs: `ls_reversal_screen.py` (new) ONLY. `floor_prices.csv`,
 `edgar_xbrl_fundamentals.csv`, `lazy_prices_similarity.csv` are read-only inputs.
@@ -166,6 +176,7 @@ def test_frozen_values():
     assert cfg.pass_rule == "at_least_2_of_3_ge_tau"
     assert cfg.fundamental_fixture.endswith("edgar_xbrl_fundamentals.csv")
     assert cfg.lazy_prices_fixture.endswith("lazy_prices_similarity.csv")
+    assert cfg.result_path.endswith("LS_REVERSAL_RESULT.json")
 
 
 def test_hash_stable_and_sensitive():
@@ -174,12 +185,18 @@ def test_hash_stable_and_sensitive():
     assert ls_reversal_hash(replace(DEFAULT_LS_REVERSAL, tau_ls=0.19)) != h0
 
 
-def test_run_hash_binds_input_bytes(tmp_path):
-    p = tmp_path / "panel.csv"; p.write_text("a")
-    f = tmp_path / "fix.csv"; f.write_text("b")
-    h0 = ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, f)
-    f.write_text("c")
-    assert ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, f) != h0
+def test_run_hash_binds_panel_and_each_fixture_independently(tmp_path):
+    p = tmp_path / "panel.csv"; p.write_text("p0")
+    fb = tmp_path / "fundamental.csv"; fb.write_text("b0")
+    fc = tmp_path / "lazy.csv"; fc.write_text("c0")
+    h0 = ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, fb, fc)
+    p.write_text("p1")
+    h1 = ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, fb, fc)
+    fb.write_text("b1")
+    h2 = ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, fb, fc)
+    fc.write_text("c1")
+    h3 = ls_reversal_run_hash(DEFAULT_LS_REVERSAL, p, fb, fc)
+    assert len({h0, h1, h2, h3}) == 4
 
 
 def test_dataclass_is_frozen():
@@ -223,6 +240,7 @@ class LongShortReversalPreReg:
     panel: str = "apps/quant/advisor/tests/fixtures/floor_prices.csv"
     fundamental_fixture: str = "apps/quant/advisor/tests/fixtures/edgar_xbrl_fundamentals.csv"
     lazy_prices_fixture: str = "apps/quant/advisor/tests/fixtures/lazy_prices_similarity.csv"
+    result_path: str = "apps/quant/advisor/research/LS_REVERSAL_RESULT.json"  # write-once lock
     value_cfg: str = "CandidatePreReg/DEFAULT_CANDIDATE"
     fundamental_cfg: str = "FundamentalCandidatePreReg/DEFAULT_FUNDAMENTAL_CANDIDATE"
     lazy_prices_cfg: str = "LazyPricesCandidatePreReg/DEFAULT_LAZY_PRICES_CANDIDATE"
@@ -451,14 +469,17 @@ def decide(families: dict, cfg: LongShortReversalPreReg) -> dict:
 `main`), create `apps/quant/advisor/research/LS_REVERSAL_PREREG.md`, modify `TODOS.md`,
 append a pinned-hash test to `test_ls_reversal_prereg.py`.
 
-- [ ] **Step 1:** append `run_screen(cfg)` + `main()` to the screen module — wiring
-      copied from `ai-logs/hermes/diag_residual_screen_bc.py` (the T0.2c ceremony):
+- [ ] **Step 1:** append `run_screen(cfg)` + `main()` to the screen module. The code
+      below IS the authoritative reading wiring (it reproduces the T0.2c measurement
+      ceremony; the original diag script is local-only and gitignored — do not
+      reference it from committed code):
 
 ```python
 def _readings(cfg):
     """family -> (panel, family_cfg, raw_fn). Each family runs on its OWN frozen
     reading surface, single-family sweep, dev folds only (how the published numbers
-    were measured: A via residual_screen.main, B/C via diag_residual_screen_bc.py)."""
+    were measured — reading A via residual_screen conventions, B/C via their frozen
+    candidate surfaces + fixtures; see the committed blend-futility note)."""
     import pandas as pd
     from advisor.backtest.residual_screen import _default_raw_fn
     from advisor.data.edgar_xbrl_fixture import load_fixture
@@ -499,18 +520,56 @@ def run_screen(cfg) -> dict:
     return decide(families, cfg)
 
 
+def enforce_one_shot(result_path, rerun_reason) -> None:
+    """Frozen one-shot rule (LS_REVERSAL_PREREG.md): PASS/CLOSED lock the outcome
+    forever; ABORT permits a rerun only with an explicit operator reason."""
+    import json
+    from pathlib import Path
+    rp = Path(result_path)
+    if not rp.exists():
+        return
+    prior = json.loads(rp.read_text(encoding="utf-8"))
+    if prior["verdict"] != "ABORT":
+        raise SystemExit(
+            f"REFUSED: recorded verdict={prior['verdict']} at {rp}; the L/S Gate-1 "
+            "outcome stands — rerun is not permitted.")
+    if not rerun_reason:
+        raise SystemExit(
+            "REFUSED: prior run ABORTed; rerun requires --rerun-after-abort "
+            "\"<operator reason>\".")
+
+
+def record_result(result_path, out: dict, rerun_reason) -> None:
+    import json
+    from pathlib import Path
+    payload = {**out, "rerun_after_abort_reason": rerun_reason}
+    Path(result_path).write_text(json.dumps(payload, indent=2, default=str),
+                                 encoding="utf-8")
+
+
 def main() -> None:
+    import argparse
     from advisor.research.ls_reversal_prereg import (
         DEFAULT_LS_REVERSAL, ls_reversal_hash, ls_reversal_run_hash)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rerun-after-abort", default=None,
+                        help="operator reason; accepted ONLY when the recorded verdict is ABORT")
+    args = parser.parse_args()
     cfg = DEFAULT_LS_REVERSAL
-    print(f"methodology_hash {ls_reversal_hash(cfg)}")
-    print(f"run_hash {ls_reversal_run_hash(cfg, cfg.panel, cfg.fundamental_fixture, cfg.lazy_prices_fixture)}")
+    enforce_one_shot(cfg.result_path, args.rerun_after_abort)
+    m_hash = ls_reversal_hash(cfg)
+    r_hash = ls_reversal_run_hash(cfg, cfg.panel, cfg.fundamental_fixture, cfg.lazy_prices_fixture)
+    print(f"methodology_hash {m_hash}")
+    print(f"run_hash {r_hash}")
     out = run_screen(cfg)
     for family, s in out["families"].items():
         post = s.get("postcost_reversed_ir")
         post_txt = f"{post:.4f}" if post is not None else "SUPPRESSED"
         print(f"{family} | precost {s['precost_ir']:.4f} | beta {s['beta']:.4f} | postcost_rev {post_txt}")
     print(f"VERDICT | {out['verdict']} (tau_ls={out['tau_ls']}, rule 2-of-3)")
+    record_result(cfg.result_path,
+                  {"methodology_hash": m_hash, "run_hash": r_hash, **out},
+                  args.rerun_after_abort)
 
 
 if __name__ == "__main__":
@@ -544,6 +603,36 @@ def test_readings_wiring_builds_without_running_any_sweep():
         assert callable(raw_fn)
 ```
 
+- [ ] **Step 3c (ext review #2): one-shot lock tests** in `test_ls_reversal_screen.py`:
+
+```python
+def test_one_shot_lock(tmp_path):
+    import json
+    from advisor.backtest.ls_reversal_screen import enforce_one_shot
+    rp = tmp_path / "result.json"
+    enforce_one_shot(rp, None)                       # no prior result: allowed
+    for locked in ("PASS", "CLOSED"):
+        rp.write_text(json.dumps({"verdict": locked}))
+        with pytest.raises(SystemExit):
+            enforce_one_shot(rp, None)               # locked forever...
+        with pytest.raises(SystemExit):
+            enforce_one_shot(rp, "any reason")       # ...even with a reason
+    rp.write_text(json.dumps({"verdict": "ABORT"}))
+    with pytest.raises(SystemExit):
+        enforce_one_shot(rp, None)                   # ABORT without reason: refused
+    enforce_one_shot(rp, "fixed fixture path typo")  # ABORT + reason: allowed
+
+
+def test_record_result_writes_reason(tmp_path):
+    import json
+    from advisor.backtest.ls_reversal_screen import record_result
+    rp = tmp_path / "result.json"
+    record_result(rp, {"verdict": "ABORT"}, None)
+    assert json.loads(rp.read_text())["rerun_after_abort_reason"] is None
+    record_result(rp, {"verdict": "CLOSED"}, "fixed fixture path typo")
+    assert json.loads(rp.read_text())["rerun_after_abort_reason"] == "fixed fixture path typo"
+```
+
 - [ ] **Step 4:** update `TODOS.md` "P3 — Long/short book diagnostics" gate line:
       Decision 5 PICKED 2026-07-06 (this plan); now **gated on Gate-1 PASS** — build in
       the Gate-2 slice, still not speculatively.
@@ -561,10 +650,13 @@ def test_readings_wiring_builds_without_running_any_sweep():
 4. Postflight (§8) → PR → **operator merges** (self-merge classifier-blocked).
 5. **The one-shot run (post-merge, separate step):**
    `PYTHONPATH=apps/quant python apps/quant/advisor/backtest/ls_reversal_screen.py`
-   — exactly once; record stdout (hashes + per-family numbers + verdict) in
-   `docs/superpowers/notes/2026-07-XX-ls-reversal-gate1-result.md`; operator records the
-   ruling. ABORT → fix wiring, rerun allowed. PASS → design Gate 2 (§10). CLOSED → lane
-   closed, negative recorded, insider Form-4 lane (queued 2nd) comes up for ruling.
+   — exactly once; the CLI writes `LS_REVERSAL_RESULT.json` and thereafter REFUSES to
+   run on PASS/CLOSED (ABORT reruns need `--rerun-after-abort "<reason>"`). Record
+   stdout (hashes + per-family numbers + verdict) in
+   `docs/superpowers/notes/2026-07-XX-ls-reversal-gate1-result.md` and COMMIT the result
+   JSON with that note; operator records the ruling. ABORT → fix wiring, rerun with the
+   flag. PASS → design Gate 2 (§10). CLOSED → lane closed, negative recorded, insider
+   Form-4 lane (queued 2nd) comes up for ruling.
    **Tests on synthetic data are not "runs"; only this real-data execution is.**
 
 ## 8. Postflight checklist (before the PR)
@@ -572,8 +664,12 @@ def test_readings_wiring_builds_without_running_any_sweep():
 - [ ] Full suite passes; count rose from 392 by exactly the new tests (record the number).
 - [ ] `node tools/run-floor.mjs --enforce` exits **1** (healthy DEV_FAILED state).
 - [ ] Verdict pins byte-identical: 0.7323 / 0.7562 / 0.8277.
-- [ ] `git diff main --stat`: `backtest/**` shows ONLY `ls_reversal_screen.py` (new);
-      `candidate_pipeline.py` diff is the two additive fields + two accumulators only.
+- [ ] `git diff "$(git merge-base origin/main HEAD)" --stat` (merge-base against the PR
+      base ref, NOT bare `main` — fragile in dirty/local checkouts): `backtest/**` shows
+      ONLY `ls_reversal_screen.py` (new); `candidate_pipeline.py` diff is the two
+      additive fields + two accumulators only.
+- [ ] `apps/quant/advisor/research/LS_REVERSAL_RESULT.json` does NOT exist (the one-shot
+      has not run; it is created only by the post-merge ceremony §7.5).
 - [ ] `test_candidate_golden_replication.py` green (streams byte-identical).
 - [ ] Secret scan clean; no fixture/holdout/ledger changes; `.claude/settings.local.json`
       dirt never committed.
@@ -611,6 +707,14 @@ Hermes verification), **A2** `_readings` wiring test (no returns computed), **A3
 `residual_screen._default_raw_fn`, **A4** pinned `book.py` day-1 turnover quirk (mirror,
 never fix), **A5** fixture paths promoted to frozen prereg fields.
 
+**External review round 2 (PR #26, request-changes — all 4 applied):** **R1** provenance
+moved to committed sources (the B/C diag script is gitignored, `.gitignore:46`; inline
+T4 wiring is authoritative), **R2** one-shot mechanically enforced via write-once
+`LS_REVERSAL_RESULT.json` + `enforce_one_shot` refusal path (`--rerun-after-abort`
+required after ABORT, PASS/CLOSED locked forever, lock tests added), **R3** run-hash
+test now mutates panel and BOTH fixtures independently, **R4** postflight diff uses
+merge-base against the PR base ref, plus a result-file-absent check.
+
 **Coverage map (every new branch → its test):**
 
 ```
@@ -620,6 +724,7 @@ SweepResultExt new fields  length/sign ✓         net+turn*c == gross reconstru
 prereg surface             frozen values ✓  hash stable/sensitive ✓  run-hash binds bytes ✓
                            frozen dataclass ✓    MD pin matches ✓
 _readings wiring           builds, no sweep ✓
+one-shot lock              PASS/CLOSED refuse ✓  ABORT needs reason ✓  reason recorded ✓
 run_screen on real data    [NO TEST — BY DESIGN] one-shot ceremony §7.5 only (A1)
 ```
 
