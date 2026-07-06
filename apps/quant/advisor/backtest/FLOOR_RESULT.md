@@ -11,6 +11,8 @@ The machine verdict printed by `node tools/run-floor.mjs` is **`DEV_FAILED`**: t
 ## Decision (accepted 2026-06-16) — Option 1: accept the negative
 **No new floor code; the family-reweighting lane is closed (exhausted).** The advisor may **report / dev-run** but is **NOT authorized for production capital sizing** while the release floor blocks (`node tools/run-floor.mjs --enforce` → exit 1). Future work is a **post-Workstream-C signal plan** — genuinely new information or out-of-sample orthogonalization at the live `ensemble_vote` seam (`portfolio/allocator.py`, which still ignores `skill_weight`) — **NOT this floor**. Keep the release gate blocked until a defensible floor clears.
 
+Update 2026-07: the live seam now honors `skill_weight`; `run_pipeline` rejects non-uniform weights until spec-§8 calibration exists.
+
 ## Evidence (dev folds only — holdout blinded)
 | Candidate | dev.passed | ensemble book-Sharpe | best standalone family | all 4 fold Δ |
 |---|---|---|---|---|

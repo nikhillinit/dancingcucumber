@@ -14,15 +14,20 @@ class Allocation:
 
 
 def ensemble_vote(bundle: SignalBundle) -> tuple[Direction, float]:
-    """Equal-weight vote across families. Net sign decides direction."""
+    """Skill-weighted vote across families. Net sign decides direction.
+
+    This live seam must remain equivalent to parity.skill_weighted_vote, the
+    independent mirror; the parity test suite enforces agreement.
+    """
     score = 0.0
     weight = 0.0
     for s in bundle.signals:
+        w = s.confidence * s.skill_weight
         if s.direction is Direction.BULLISH:
-            score += s.confidence
+            score += w
         elif s.direction is Direction.BEARISH:
-            score -= s.confidence
-        weight += s.confidence
+            score -= w
+        weight += w
     if weight == 0 or score == 0:
         return Direction.NEUTRAL, 50.0
     direction = Direction.BULLISH if score > 0 else Direction.BEARISH

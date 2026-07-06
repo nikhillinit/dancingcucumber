@@ -5,9 +5,12 @@ from advisor.schemas import Direction, SignalBundle
 
 
 def skill_weighted_vote(bundle: SignalBundle) -> tuple[Direction, float]:
-    """Skill-weighted vote: same shape as ensemble_vote but each family's signed
-    confidence is scaled by its skill_weight. This is the *intended* deployment
-    seam implied by the backtest when skill_weight != 1."""
+    """Parity/audit helper for the live weighted seam.
+
+    This independent mirror keeps the same shape as ensemble_vote but scales each
+    family's signed confidence by skill_weight. Non-uniform weights require
+    validated skill estimates; none exist as of 2026-07.
+    """
     score = 0.0
     weight = 0.0
     for s in bundle.signals:
@@ -26,8 +29,8 @@ def skill_weighted_vote(bundle: SignalBundle) -> tuple[Direction, float]:
 
 def vote_parity(bundle: SignalBundle) -> dict:
     """Field-level audit comparing the live ensemble_vote seam against the
-    intended skill_weighted_vote seam. The two seams are guaranteed to agree
-    only when all skill_weight values are uniform."""
+    skill_weighted_vote independent mirror. Post-fix the seams must always
+    agree; any divergence is a regression signal."""
     live_dir, live_conf = ensemble_vote(bundle)
     w_dir, w_conf = skill_weighted_vote(bundle)
     weights = [s.skill_weight for s in bundle.signals]
