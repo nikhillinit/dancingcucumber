@@ -18,7 +18,7 @@ class FamilySignal(BaseModel):
     family: str
     direction: Direction
     confidence: float = Field(ge=0, le=100)
-    skill_weight: float = Field(default=1.0, ge=0)
+    skill_weight: float = Field(default=1.0, ge=0, le=100)
     as_of: date
     reasoning: str = ""
 
