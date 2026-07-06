@@ -71,23 +71,104 @@ def _flip_bundle():
     ])
 
 
+def _mute_bundle():
+    live_signal = FamilySignal(
+        family="live",
+        direction=Direction.BULLISH,
+        confidence=80.0,
+        skill_weight=1.0,
+        as_of=AS_OF,
+    )
+    muted_signal = FamilySignal(
+        family="muted",
+        direction=Direction.BEARISH,
+        confidence=100.0,
+        skill_weight=0.0,
+        as_of=AS_OF,
+    )
+    neutral_signal = FamilySignal.neutral("neutral", AS_OF)
+    return SignalBundle(
+        ticker="AAPL",
+        as_of=AS_OF,
+        signals=[live_signal, muted_signal, neutral_signal],
+    )
+
+
 def test_nonuniform_flip_setup_is_a_real_divergence():
-    """Guard: the flip bundle genuinely diverges between the two seams."""
+    """Guard: raw equal voting would diverge from the live weighted seam."""
     bundle = _flip_bundle()
-    assert ensemble_vote(bundle)[0] is Direction.BULLISH
-    assert skill_weighted_vote(bundle)[0] is Direction.BEARISH
+    raw_signed_confidence = sum(
+        s.confidence if s.direction is Direction.BULLISH
+        else -s.confidence if s.direction is Direction.BEARISH
+        else 0.0
+        for s in bundle.signals
+    )
+    assert raw_signed_confidence > 0
+    assert ensemble_vote(bundle)[0] is Direction.BEARISH
+
     audit = vote_parity(bundle)
     assert audit["skill_weights_uniform"] is False
-    assert audit["direction_match"] is False
+    assert audit["direction_match"] is True
+
+    allocation = allocate(bundle, price=100.0, position_limit_dollars=25_000.0)
+    assert allocation.action == "sell"
+    assert allocation.quantity > 0
 
 
-@pytest.mark.xfail(
-    reason="live ensemble_vote ignores skill_weight; tracked as future work at the live seam",
-    strict=False,
-)
+@pytest.mark.parametrize("bundle", UNIFORM_BUNDLES + [_flip_bundle(), _mute_bundle()])
+def test_live_vote_matches_skill_weighted_oracle(bundle):
+    """The live seam and independent oracle must agree for every fixture bundle."""
+    assert ensemble_vote(bundle) == skill_weighted_vote(bundle)
+
+
+def test_zero_weight_signal_is_excluded_and_neutral_signal_dilutes():
+    bundle = _mute_bundle()
+    live_signal, muted_signal, neutral_signal = bundle.signals
+    live_only = SignalBundle(ticker="AAPL", as_of=AS_OF, signals=[live_signal])
+    live_and_muted = SignalBundle(
+        ticker="AAPL",
+        as_of=AS_OF,
+        signals=[live_signal, muted_signal],
+    )
+    live_and_neutral = SignalBundle(
+        ticker="AAPL",
+        as_of=AS_OF,
+        signals=[live_signal, neutral_signal],
+    )
+
+    assert ensemble_vote(live_and_muted) == ensemble_vote(live_only)
+
+    direction, confidence = ensemble_vote(bundle)
+    assert direction is Direction.BULLISH
+    assert confidence == pytest.approx(80.76923076923077)
+    assert ensemble_vote(bundle) == ensemble_vote(live_and_neutral)
+    assert confidence < ensemble_vote(live_only)[1]
+    assert ensemble_vote(bundle) == skill_weighted_vote(bundle)
+
+
+def test_all_zero_skill_weights_are_neutral():
+    bundle = _bundle([
+        (Direction.BULLISH, 80.0, 0.0),
+        (Direction.BEARISH, 60.0, 0.0),
+        (Direction.NEUTRAL, 50.0, 0.0),
+    ])
+    assert ensemble_vote(bundle) == (Direction.NEUTRAL, 50.0)
+
+
+def test_allocate_guard_branches_hold():
+    bundle = _bundle([(Direction.BULLISH, 80.0, 1.0), (Direction.BULLISH, 70.0, 1.0)])
+    assert allocate(bundle, price=0.0, position_limit_dollars=25_000.0).action == "hold"
+    assert allocate(bundle, price=-1.0, position_limit_dollars=25_000.0).action == "hold"
+    assert allocate(bundle, price=100.0, position_limit_dollars=0.0).action == "hold"
+    assert allocate(bundle, price=100.0, position_limit_dollars=-1.0).action == "hold"
+
+    tiny_edge = _bundle([(Direction.BULLISH, 50.1, 1.0), (Direction.BEARISH, 50.0, 1.0)])
+    allocation = allocate(tiny_edge, price=100.0, position_limit_dollars=1_000.0)
+    assert allocation.action == "hold"
+    assert allocation.quantity == 0
+
+
 def test_live_seam_honors_skill_weight():
-    """DOCUMENTED GAP: when skill_weight is non-uniform the live seam should
-    already match the intended skill-weighted seam. Turns green the day the
-    live ensemble_vote honors skill_weight."""
+    """Non-uniform skill_weight is enforced at the live weighted seam."""
     bundle = _flip_bundle()
     assert ensemble_vote(bundle) == skill_weighted_vote(bundle)
