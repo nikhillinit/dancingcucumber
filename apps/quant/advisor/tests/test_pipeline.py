@@ -3,9 +3,10 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from advisor.pipeline.run import run_pipeline
-from advisor.schemas import Direction
+from advisor.schemas import Direction, FamilySignal
 
 
 def test_pipeline_produces_bounded_decision():
@@ -46,3 +47,59 @@ def test_pipeline_applies_persona_veto():
     assert decision.action == "hold"
     assert decision.quantity == 0
     assert "forensic red flag" in decision.reasoning
+
+
+def test_pipeline_rejects_mixed_skill_weights():
+    async def default_weight_family(as_of):
+        return FamilySignal(
+            family="default",
+            direction=Direction.BULLISH,
+            confidence=80.0,
+            as_of=as_of,
+        )
+
+    async def weighted_family(as_of):
+        return FamilySignal(
+            family="weighted",
+            direction=Direction.BEARISH,
+            confidence=60.0,
+            skill_weight=2.0,
+            as_of=as_of,
+        )
+
+    with pytest.raises(ValueError, match="(?i)non-uniform skill weights.*validated calibration"):
+        asyncio.run(run_pipeline(
+            ticker="AAPL", as_of=date(2024, 5, 1), price=100.0,
+            net_liq=100_000.0, vol=0.10, correlation=0.5,
+            family_coros=[default_weight_family, weighted_family],
+        ))
+
+
+def test_pipeline_allows_uniform_skill_weights():
+    async def bullish_family(as_of):
+        return FamilySignal(
+            family="bullish",
+            direction=Direction.BULLISH,
+            confidence=80.0,
+            skill_weight=2.0,
+            as_of=as_of,
+        )
+
+    async def bearish_family(as_of):
+        return FamilySignal(
+            family="bearish",
+            direction=Direction.BEARISH,
+            confidence=60.0,
+            skill_weight=2.0,
+            as_of=as_of,
+        )
+
+    decision = asyncio.run(run_pipeline(
+        ticker="AAPL", as_of=date(2024, 5, 1), price=100.0,
+        net_liq=100_000.0, vol=0.10, correlation=0.5,
+        family_coros=[bullish_family, bearish_family],
+    ))
+
+    assert decision.ticker == "AAPL"
+    assert decision.action in {"buy", "sell", "hold"}
+    assert decision.bundle_direction in {d.value for d in Direction}
