@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import * as router from './orchestrate.mjs';
 
@@ -32,6 +33,8 @@ const {
   writeDebateRunRecord,
   writeRunLedger,
 } = router;
+
+const ROUTER_ROOT = dirname(fileURLToPath(import.meta.url));
 
 function routingFixture() {
   return {
@@ -508,6 +511,7 @@ describe('argument parsing and routing decisions', () => {
       live: false,
       manualModel: null,
       allowFallback: false,
+      project: null,
       legacyCommand: null,
     });
 
@@ -541,12 +545,20 @@ describe('argument parsing and routing decisions', () => {
         live: true,
         manualModel: 'codex',
         allowFallback: true,
+        project: null,
         legacyCommand: null,
       }
     );
 
     assert.equal(parseArgs(['doctor']).legacyCommand, 'doctor');
     assert.equal(parseArgs(['--claude']).manualModel, 'claude');
+  });
+
+  test('parseArgs accepts project aliases and resolves them to absolute paths', () => {
+    const projectPath = join('C:\\', 'tmp', 'alpha-project');
+
+    assert.equal(parseArgs(['--project', projectPath]).project, resolve(projectPath));
+    assert.equal(parseArgs(['--cwd', 'relative-project']).project, resolve('relative-project'));
   });
 
   test('parseArgs rejects unsafe or unknown controls', () => {
@@ -1454,11 +1466,13 @@ describe('test fakes and DI seams', () => {
 
   test('createLiveRunStep applies read-only codex args for reviewer spawn', async () => {
     const clock = createFakeClock();
+    const targetProject = join('C:\\', 'tmp', 'review-target');
     const spawn = createScriptedSpawn([{ stdout: ['APPROVED'], code: 0 }], { clock });
     const routing = routingWithLadder();
     const runStep = createLiveRunStep({
       routing,
       env: { CODEX_BIN: process.execPath },
+      cwd: targetProject,
       modelClock: clock,
       executor(model, prompt, effectiveRouting, env, seams) {
         return executeModelCapture(model, prompt, effectiveRouting, env, {
@@ -1477,6 +1491,7 @@ describe('test fakes and DI seams', () => {
 
     assert.equal(result.approved, true);
     assert.deepEqual(spawn.calls[0].args, ['exec', '--sandbox', 'read-only']);
+    assert.equal(spawn.calls[0].options.cwd, targetProject);
     assert.deepEqual(routing.commands.codex.args, ['exec', '--sandbox', 'workspace-write']);
   });
 
@@ -1587,6 +1602,150 @@ describe('main dependency seams', () => {
     assert.equal(plan.model, 'codex');
     assert.equal(plan.gate, 'npm run check');
     assert.equal(plan.ownership.owner, 'codex');
+    assert.equal(plan.targetProject, ROUTER_ROOT);
+  });
+
+  test('main passes --project cwd to the spawned model child', async () => {
+    const captured = captureIo();
+    const clock = createFakeClock();
+    const gateCalls = [];
+    const ledgers = [];
+    const targetProject = join('C:\\', 'tmp', 'target-project');
+    const spawn = createScriptedSpawn([{ stdout: ['done'], code: 0 }], { clock });
+    const pending = main(
+      [
+        '--phase',
+        'production',
+        '--task',
+        'add router tests',
+        '--project',
+        targetProject,
+        '--skip-preflight-gate',
+        '--skip-reason',
+        'test fixture',
+      ],
+      { CODEX_BIN: process.execPath },
+      captured.io,
+      {
+        routing: routingFixture(),
+        brain: 'DEV_BRAIN fixture',
+        soul: 'SOUL fixture',
+        gateRunner: gateRunner(0, gateCalls),
+        commandExists: recordCommandExists(),
+        executeModel(model, prompt, effectiveRouting, env, seams) {
+          return executeModelCapture(model, prompt, effectiveRouting, env, {
+            ...seams,
+            spawn,
+          }).then((result) => result.code);
+        },
+        writeRunLedger(record) {
+          ledgers.push(record);
+        },
+        appendRunEvent: null,
+        clock: () => clock.now(),
+      }
+    );
+    spawn.flushNext();
+
+    const code = await pending;
+
+    assert.equal(code, 0);
+    assert.equal(spawn.calls[0].options.cwd, resolve(targetProject));
+    assert.equal(ledgers[0].plan.targetProject, resolve(targetProject));
+  });
+
+  test('main defaults the spawned model child cwd to router root, not process cwd', async () => {
+    const captured = captureIo();
+    const clock = createFakeClock();
+    const spawn = createScriptedSpawn([{ stdout: ['done'], code: 0 }], { clock });
+    const originalCwd = process.cwd();
+    process.chdir(dirname(ROUTER_ROOT));
+
+    try {
+      assert.notEqual(process.cwd(), ROUTER_ROOT);
+      const pending = main(
+        [
+          '--phase',
+          'production',
+          '--task',
+          'add router tests',
+          '--skip-preflight-gate',
+          '--skip-reason',
+          'test fixture',
+        ],
+        { CODEX_BIN: process.execPath },
+        captured.io,
+        {
+          routing: routingFixture(),
+          brain: 'DEV_BRAIN fixture',
+          soul: 'SOUL fixture',
+          gateRunner: gateRunner(0),
+          commandExists: recordCommandExists(),
+          executeModel(model, prompt, effectiveRouting, env, seams) {
+            return executeModelCapture(model, prompt, effectiveRouting, env, {
+              ...seams,
+              spawn,
+            }).then((result) => result.code);
+          },
+          writeRunLedger() {},
+          appendRunEvent: null,
+          clock: () => clock.now(),
+        }
+      );
+      spawn.flushNext();
+
+      const code = await pending;
+
+      assert.equal(code, 0);
+      assert.equal(spawn.calls[0].options.cwd, ROUTER_ROOT);
+      assert.notEqual(spawn.calls[0].options.cwd, process.cwd());
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  test('main keeps governance ledger writes rooted at the router under --project', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const targetProject = join('C:\\', 'tmp', 'external-project');
+    const code = await main(
+      [
+        '--phase',
+        'production',
+        '--task',
+        'add router tests',
+        '--project',
+        targetProject,
+        '--skip-preflight-gate',
+        '--skip-reason',
+        'test fixture',
+      ],
+      {},
+      captured.io,
+      {
+        routing: routingFixture(),
+        brain: 'DEV_BRAIN fixture',
+        soul: 'SOUL fixture',
+        gateRunner: gateRunner(0),
+        commandExists: recordCommandExists(),
+        executeModel(_model, _prompt, _routing, _env, seams) {
+          assert.equal(seams.cwd, resolve(targetProject));
+          return 0;
+        },
+        writeRunLedger(record) {
+          return writeRunLedger(record, { fs, envSecrets: [] });
+        },
+        appendRunEvent: null,
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }
+    );
+
+    assert.equal(code, 0);
+    assert.deepEqual(fs.calls[0], {
+      method: 'mkdirSync',
+      path: join(ROUTER_ROOT, 'ai-logs', 'hermes', 'runs'),
+      options: { recursive: true },
+    });
   });
 
   test('main aborts on preflight gate failure and records the ledger through deps', async () => {
