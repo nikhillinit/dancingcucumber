@@ -333,6 +333,17 @@ function gateRunner(status = 0, calls = []) {
   };
 }
 
+function recordCommandExists(missingBins = []) {
+  const missing = new Set(missingBins);
+  const calls = [];
+  const commandExists = (bin) => {
+    calls.push(bin);
+    return !missing.has(bin);
+  };
+  commandExists.calls = calls;
+  return commandExists;
+}
+
 describe('Hermes router public surface', () => {
   test('exports the functions consumed by the router test foundation', () => {
     assert.deepEqual(
@@ -562,6 +573,7 @@ describe('prompt, approval, gate, and readiness helpers', () => {
     assert.match(prompt, /--- HERMES_SOUL ---\nSOUL fixture\n--- END HERMES_SOUL ---/);
     assert.match(prompt, /TASK: repair failing test regression/);
     assert.match(prompt, /Use \.claude\/DISCOVERY-MAP\.md and \.claude\/AGENT-DIRECTORY\.md/);
+    assert.doesNotMatch(prompt, /handoff\.schema\.json/);
   });
 
   test('parseApprovalSignal accepts tolerant approvals and fails closed on rejection or ambiguity', () => {
@@ -791,6 +803,7 @@ describe('main dependency seams', () => {
         brain: 'DEV_BRAIN fixture',
         soul: 'SOUL fixture',
         gateRunner: gateRunner(7, gateCalls),
+        commandExists: recordCommandExists(),
         executeModel() {
           throw new Error('model execution should abort after preflight failure');
         },
@@ -823,6 +836,7 @@ describe('main dependency seams', () => {
     const gateCalls = [];
     const ledgers = [];
     const modelPrompts = [];
+    const commandExists = recordCommandExists(['missing-codex']);
     const code = await main(
       [
         '--phase',
@@ -833,13 +847,14 @@ describe('main dependency seams', () => {
         '--skip-reason',
         'test fixture',
       ],
-      {},
+      { CODEX_BIN: 'missing-codex' },
       captured.io,
       {
         routing: routingFixture(),
         brain: 'DEV_BRAIN fixture',
         soul: 'SOUL fixture',
         gateRunner: gateRunner(0, gateCalls),
+        commandExists,
         executeModel(model, prompt) {
           modelPrompts.push({ model, prompt });
           return 0;
@@ -858,6 +873,11 @@ describe('main dependency seams', () => {
     assert.equal(modelPrompts[0].model, 'codex');
     assert.match(modelPrompts[0].prompt, /TASK: add router tests/);
     assert.equal(ledgers.length, 1);
+    assert.deepEqual(ledgers[0].availability, [
+      { provider: 'claude', bin: 'claude', found: true },
+      { provider: 'codex', bin: 'missing-codex', found: false },
+    ]);
+    assert.deepEqual(commandExists.calls, ['claude', 'missing-codex']);
     assert.deepEqual(ledgers[0].preflight, {
       command: 'npm run check',
       status: null,
@@ -866,6 +886,46 @@ describe('main dependency seams', () => {
     });
     assert.deepEqual(ledgers[0].model, { name: 'codex', exitCode: 0 });
     assert.deepEqual(ledgers[0].postflight, { command: 'npm run check', status: 0 });
+  });
+
+  test('main records provider availability for live workflow ledgers', async () => {
+    const captured = captureIo();
+    const gateCalls = [];
+    const ledgers = [];
+    const stepCalls = [];
+    const commandExists = recordCommandExists(['missing-codex']);
+    const code = await main(
+      ['--workflow', 'pair', '--live', '--phase', 'production', '--task', 'add router tests'],
+      { CODEX_BIN: 'missing-codex' },
+      captured.io,
+      {
+        routing: routingFixture(),
+        brain: 'DEV_BRAIN fixture',
+        soul: 'SOUL fixture',
+        gateRunner: gateRunner(0, gateCalls),
+        commandExists,
+        async runStep({ step }) {
+          stepCalls.push(step.role);
+          return { code: 0, approved: true, output: `${step.role} output` };
+        },
+        writeRunLedger(record) {
+          ledgers.push(record);
+        },
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }
+    );
+
+    assert.equal(code, 0);
+    assert.equal(captured.output().stderr, '');
+    assert.deepEqual(stepCalls, ['owner', 'reviewer']);
+    assert.equal(gateCalls.length, 2);
+    assert.equal(ledgers.length, 1);
+    assert.deepEqual(ledgers[0].availability, [
+      { provider: 'claude', bin: 'claude', found: true },
+      { provider: 'codex', bin: 'missing-codex', found: false },
+    ]);
+    assert.deepEqual(commandExists.calls, ['claude', 'missing-codex']);
+    assert.equal(ledgers[0].exitCode, 0);
   });
 });
 
