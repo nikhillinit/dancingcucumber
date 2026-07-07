@@ -1,5 +1,40 @@
 {
   "version": 2,
+  "rateLimits": {
+    "enabled": false,
+    "note": "Disabled until an operator flips it after a clean solo run; signatures are version-pinned and maintained from observed ledger evidence.",
+    "signatures": {
+      "claude": {
+        "source": "usage limit|rate limit|overloaded",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "codex": {
+        "source": "rate.?limit|429|usage cap|quota",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "agy": {
+        "source": "RESOURCE_EXHAUSTED|quota|429",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "kimi": {
+        "source": "rate.?limit|quota|429",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      }
+    },
+    "defaults": {
+      "fallbackMinutes": 60,
+      "providers": {
+        "claude": 60,
+        "kimi": 60,
+        "agy": 60,
+        "codex": 360
+      }
+    }
+  },
   "ladder": { "enabled": false, "rungs": ["claude", "codex", "kimi", "agy"] },
   "defaults": { "research": "claude", "production": "codex", "distribution": "claude" },
   "ownership": {

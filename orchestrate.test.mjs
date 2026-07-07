@@ -125,6 +125,39 @@ function routingWithLadder({ enabled = true, rungs = ['claude', 'codex', 'kimi',
   return routing;
 }
 
+function routingWithRateLimits({ enabled = true, ladderEnabled = false, defaults = {} } = {}) {
+  const routing = routingWithLadder({ enabled: ladderEnabled, rungs: ['claude', 'codex', 'kimi', 'agy'] });
+  routing.rateLimits = {
+    enabled,
+    signatures: {
+      claude: { source: 'usage limit|rate limit|overloaded', flags: 'i' },
+      codex: { source: 'rate.?limit|429|usage cap|quota', flags: 'i' },
+      agy: { source: 'RESOURCE_EXHAUSTED|quota|429', flags: 'i' },
+      kimi: { source: 'rate.?limit|quota|429', flags: 'i' },
+    },
+    defaults: {
+      fallbackMinutes: 60,
+      providers: {
+        claude: 60,
+        kimi: 60,
+        agy: 60,
+        codex: 360,
+        ...(defaults.providers || {}),
+      },
+      ...defaults,
+    },
+  };
+  return routing;
+}
+
+function providerStateFile(root) {
+  return join(root, 'ai-logs', 'hermes', 'provider-state.json');
+}
+
+function readProviderState(fs, root) {
+  return JSON.parse(fs.files.get(providerStateFile(root)));
+}
+
 // Manual clock for tests and fakes. It never installs real timers or open handles.
 function createFakeClock(start = '2026-07-07T19:04:07.684Z') {
   let currentMs = typeof start === 'number' ? start : new Date(start).getTime();
@@ -1869,6 +1902,282 @@ describe('main dependency seams', () => {
     assert.match(captured.output().stdout, /Stale in-progress runs/);
     assert.match(captured.output().stdout, new RegExp(staleRunId));
     assert.match(captured.output().stdout, /25h/);
+  });
+});
+
+describe('rate-limit signature registry and cooldown store', () => {
+  async function runRateLimitedCommand({
+    provider = 'claude',
+    routing = routingWithRateLimits(),
+    stderr = 'usage limit reached',
+    fs = createRecordingFs(),
+    root = join('C:\\', 'tmp', 'hermes-cooldown-test'),
+    clock = createFakeClock('2026-07-07T19:00:00.000Z'),
+    events = [],
+  } = {}) {
+    const spawn = createScriptedSpawn([{ stderr: [stderr], code: 7 }], { clock });
+    const env = {
+      CLAUDE_CODE_BIN: process.execPath,
+      CODEX_BIN: process.execPath,
+      KIMI_CODE_BIN: process.execPath,
+      AGY_BIN: process.execPath,
+    };
+    const pending = executeModelCommand(provider, 'prompt', routing, env, {
+      spawn,
+      clock,
+      captureOutput: true,
+      providerStateFs: fs,
+      root,
+      runId: 'hermes-test-run',
+      appendRunEvent(_runId, event) {
+        events.push(event);
+      },
+    });
+    spawn.flushNext();
+    return pending;
+  }
+
+  test('matched provider signature classifies as rate_limited, sets default cooldown, and emits event', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-cooldown-default');
+    const events = [];
+
+    const result = await runRateLimitedCommand({ fs, root, events });
+    const state = readProviderState(fs, root);
+
+    assert.equal(result.failure, 'rate_limited');
+    assert.equal(state.providers.claude.coolingUntil, '2026-07-07T20:00:00.000Z');
+    assert.equal(state.providers.claude.reason, 'rate_limited');
+    assert.deepEqual(
+      events.filter((event) => event.type === 'cooldown_set'),
+      [{ type: 'cooldown_set', provider: 'claude', coolingUntil: '2026-07-07T20:00:00.000Z' }]
+    );
+  });
+
+  test('provider-state cooling skips the ladder before expiry and releases at the boundary', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-cooling-boundary');
+    fs.files.set(
+      providerStateFile(root),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-07T20:00:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T19:00:00.000Z',
+          },
+        },
+      })}\n`
+    );
+    const routing = routingWithRateLimits({ ladderEnabled: true });
+
+    async function planAt(now) {
+      const captured = captureIo();
+      const code = await main(
+        ['--json', '--phase', 'research', '--task', 'plain docs update'],
+        {},
+        captured.io,
+        {
+          routing,
+          brain: 'brain',
+          soul: 'soul',
+          fs,
+          root,
+          commandExists: recordCommandExists(),
+          clock: () => new Date(now),
+        }
+      );
+      assert.equal(code, 0);
+      return JSON.parse(captured.output().stdout);
+    }
+
+    assert.equal((await planAt('2026-07-07T19:59:59.999Z')).model, 'codex');
+    assert.equal((await planAt('2026-07-07T20:00:00.000Z')).model, 'claude');
+  });
+
+  test('corrupt provider-state fails open, warns once, sidelines the file, and doctor continues', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-corrupt-state');
+    fs.files.set(providerStateFile(root), '{not-json');
+
+    const code = await main(['doctor'], {}, captured.io, {
+      routing: routingFixture(),
+      commandExists: recordCommandExists(),
+      fs,
+      root,
+      clock: () => new Date('2026-07-07T19:00:00.000Z'),
+    });
+
+    const output = captured.output();
+    assert.equal(code, 0);
+    assert.match(output.stdout, /Hermes CLI doctor/);
+    assert.equal((output.stderr.match(/provider cooldown state was corrupt/g) || []).length, 1);
+    assert.equal(fs.files.has(providerStateFile(root)), false);
+    assert.equal(fs.files.has(`${providerStateFile(root)}.corrupt`), true);
+  });
+
+  test('cooldown writes re-read and keep a longer on-disk coolingUntil', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-merge-state');
+    fs.files.set(
+      providerStateFile(root),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-08T00:00:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T18:00:00.000Z',
+          },
+        },
+      })}\n`
+    );
+
+    const result = await runRateLimitedCommand({ fs, root });
+    const state = readProviderState(fs, root);
+
+    assert.equal(result.failure, 'rate_limited');
+    assert.equal(state.providers.claude.coolingUntil, '2026-07-08T00:00:00.000Z');
+  });
+
+  test('repeat triggers double the duration and cap at 24 hours', async () => {
+    const activeFs = createRecordingFs();
+    const activeRoot = join('C:\\', 'tmp', 'hermes-repeat-active');
+    activeFs.files.set(
+      providerStateFile(activeRoot),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-07T19:30:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T18:30:00.000Z',
+          },
+        },
+      })}\n`
+    );
+
+    await runRateLimitedCommand({ fs: activeFs, root: activeRoot });
+    assert.equal(
+      readProviderState(activeFs, activeRoot).providers.claude.coolingUntil,
+      '2026-07-07T21:00:00.000Z'
+    );
+
+    const cappedFs = createRecordingFs();
+    const cappedRoot = join('C:\\', 'tmp', 'hermes-repeat-capped');
+    cappedFs.files.set(
+      providerStateFile(cappedRoot),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-07T19:30:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T18:30:00.000Z',
+          },
+        },
+      })}\n`
+    );
+    const routing = routingWithRateLimits({
+      defaults: { providers: { claude: 800 } },
+    });
+
+    await runRateLimitedCommand({ routing, fs: cappedFs, root: cappedRoot });
+    assert.equal(
+      readProviderState(cappedFs, cappedRoot).providers.claude.coolingUntil,
+      '2026-07-08T19:00:00.000Z'
+    );
+  });
+
+  test('explicit reset time in the message is used instead of the provider default', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-explicit-reset');
+
+    await runRateLimitedCommand({
+      fs,
+      root,
+      stderr: 'usage limit reached; resets at 2026-07-07T22:30:00.000Z',
+    });
+
+    assert.equal(
+      readProviderState(fs, root).providers.claude.coolingUntil,
+      '2026-07-07T22:30:00.000Z'
+    );
+  });
+
+  test('doctor renders WINDOW for cooling providers and dash for healthy providers', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-doctor-window');
+    fs.files.set(
+      providerStateFile(root),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-07T20:00:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T19:00:00.000Z',
+          },
+        },
+      })}\n`
+    );
+
+    const code = await main(['doctor'], {}, captured.io, {
+      routing: routingWithRateLimits(),
+      commandExists: recordCommandExists(),
+      fs,
+      root,
+      clock: () => new Date('2026-07-07T19:30:00.000Z'),
+    });
+
+    const stdout = captured.output().stdout;
+    assert.equal(code, 0);
+    assert.match(stdout, /WINDOW/);
+    assert.match(stdout, /claude\s+claude\s+default\s+found\s+2026-07-07T20:00:00.000Z/);
+    assert.match(stdout, /codex\s+codex\s+default\s+found\s+-/);
+  });
+
+  test('rateLimits disabled leaves classification and ladder selection unchanged', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-disabled-rate-limits');
+    const result = await runRateLimitedCommand({
+      routing: routingWithRateLimits({ enabled: false }),
+      fs,
+      root,
+      stderr: 'quota 429',
+    });
+
+    assert.equal(result.failure, 'nonzero_exit');
+    assert.equal(fs.files.has(providerStateFile(root)), false);
+
+    fs.files.set(
+      providerStateFile(root),
+      `${JSON.stringify({
+        providers: {
+          claude: {
+            coolingUntil: '2026-07-07T20:00:00.000Z',
+            reason: 'rate_limited',
+            triggeredAt: '2026-07-07T19:00:00.000Z',
+          },
+        },
+      })}\n`
+    );
+    const captured = captureIo();
+    const code = await main(
+      ['--json', '--phase', 'research', '--task', 'plain docs update'],
+      {},
+      captured.io,
+      {
+        routing: routingWithRateLimits({ enabled: false, ladderEnabled: false }),
+        brain: 'brain',
+        soul: 'soul',
+        fs,
+        root,
+        commandExists: recordCommandExists(),
+        clock: () => new Date('2026-07-07T19:30:00.000Z'),
+      }
+    );
+
+    assert.equal(code, 0);
+    assert.equal(JSON.parse(captured.output().stdout).model, 'claude');
   });
 });
 
