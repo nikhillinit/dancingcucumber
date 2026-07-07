@@ -10,6 +10,7 @@ const {
   buildPrompt,
   chooseModel,
   createLiveRunStep,
+  createWorkflowPlan,
   createRoutingPlan,
   evaluateReadiness,
   executeModelCapture,
@@ -27,6 +28,8 @@ const {
   resolveOwnership,
   shouldRunPostflightGate,
   scoreSpecialist,
+  validateDebateRunRecordShape,
+  writeDebateRunRecord,
   writeRunLedger,
 } = router;
 
@@ -481,6 +484,8 @@ describe('Hermes router public surface', () => {
         'runGate',
         'shouldRunPostflightGate',
         'scoreSpecialist',
+        'validateDebateRunRecordShape',
+        'writeDebateRunRecord',
         'writeRunLedger',
       ].sort(),
       Object.keys(router).sort()
@@ -564,6 +569,30 @@ describe('argument parsing and routing decisions', () => {
     assert.equal(chooseModel('repo-wide architecture scan', 'production', routing), 'kimi');
     assert.equal(chooseModel('small fix', 'production', routing, 'claude'), 'claude');
     assert.equal(chooseModel('unknown phase', 'maintenance', routing), 'claude');
+  });
+
+  test('createWorkflowPlan inserts debate rebuttal between comparators and synthesis', () => {
+    const workflow = createWorkflowPlan({
+      requestedWorkflow: 'debate',
+      phase: 'production',
+      model: 'codex',
+      ownership: { effectivePhase: 'production', artifact: 'diff plus tests' },
+      gate: null,
+      debate: { comparators: ['claude', 'codex'], synthesis: 'claude' },
+    });
+
+    assert.deepEqual(
+      workflow.steps.map((step) => step.role),
+      ['comparator', 'comparator', 'rebuttal', 'synthesis']
+    );
+    assert.deepEqual(
+      workflow.steps.map((step) => step.model),
+      ['claude', 'codex', 'claude', 'claude']
+    );
+    assert.equal(
+      workflow.steps[2].action,
+      'verify and rebut comparator critiques against ground truth'
+    );
   });
 
   test('resolveSandboxArgs makes non-owner codex lanes read-only and fails unknown roles closed', () => {
@@ -989,6 +1018,256 @@ describe('test fakes and DI seams', () => {
     assert.equal(fs.calls[1].path, file);
     assert.deepEqual(JSON.parse(fs.files.get(file)), record);
     assert.equal(fs.files.get(file).endsWith('\n'), true);
+  });
+
+  test('debate workflow emits a structural debate-run record with rebuttal lane', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const clock = createFakeClock();
+    const workflow = createWorkflowPlan({
+      requestedWorkflow: 'debate',
+      phase: 'production',
+      model: 'codex',
+      ownership: { effectivePhase: 'production', artifact: 'diff plus tests' },
+      gate: null,
+      debate: { comparators: ['claude', 'codex'], synthesis: 'claude' },
+    });
+    const calls = [];
+    let debateResult = null;
+
+    const record = await executeWorkflow(
+      { phase: 'production', risk: 'standard', gate: null, workflow },
+      {
+        runId: 'hermes-2026-07-07T19-04-07-684Z',
+        async runStep({ step, input }) {
+          clock.advance(1);
+          calls.push({ role: step.role, input });
+          if (step.role === 'comparator') {
+            return { code: 0, output: `${step.model} critique` };
+          }
+          if (step.role === 'rebuttal') {
+            assert.deepEqual(input, ['claude critique', 'codex critique']);
+            return { code: 0, output: 'rebuttal ranked outcome' };
+          }
+          if (step.role === 'synthesis') {
+            assert.deepEqual(input, [
+              'claude critique',
+              'codex critique',
+              'REBUTTAL:\nrebuttal ranked outcome',
+            ]);
+            return { code: 0, output: 'FINAL VERDICT: APPROVE-WITH-CHANGES' };
+          }
+          throw new Error(`unexpected step ${step.role}`);
+        },
+        writeRunLedger(ledger) {
+          return writeRunLedger(ledger, { root, fs, envSecrets: [] });
+        },
+        writeDebateRunRecord(ledger, options) {
+          debateResult = writeDebateRunRecord(ledger, {
+            ...options,
+            root,
+            fs,
+            clock: () => clock.now(),
+            io: captured.io,
+          });
+          return debateResult;
+        },
+        appendRunEvent: null,
+        root,
+        clock: () => clock.now(),
+        io: captured.io,
+      }
+    );
+
+    assert.equal(record.exitCode, 0);
+    assert.deepEqual(
+      calls.map((call) => call.role),
+      ['comparator', 'comparator', 'rebuttal', 'synthesis']
+    );
+    const hermesFile = join(
+      root,
+      'ai-logs',
+      'hermes',
+      'runs',
+      'hermes-2026-07-07T19-04-07-684Z.json'
+    );
+    const debateFile = [...fs.files.keys()].find((file) => file.includes('debate-run-'));
+    assert.equal(fs.files.has(hermesFile), true);
+    assert.equal(Boolean(debateFile), true);
+    assert.equal(debateResult.file, debateFile);
+
+    const debateRun = JSON.parse(fs.files.get(debateFile));
+    const validation = validateDebateRunRecordShape(debateRun);
+    assert.equal(validation.valid, true);
+    assert.deepEqual(validation.errors, []);
+    assert.deepEqual(
+      debateRun.lanes.map((lane) => lane.lane),
+      ['claude', 'codex', 'rebuttal']
+    );
+    assert.equal(debateRun.workflow, 'hermes-debate/v1');
+    assert.equal(debateRun.finalVerdict, 'APPROVE-WITH-CHANGES');
+    assert.equal(debateRun.synthesisFile, null);
+    assert.deepEqual(debateRun.deviationsFromSpec[0], {
+      what: 'router runs model-based comparators, not distinct redteam/blind lanes',
+      why: 'router transport maps N comparator models onto the spec lane set',
+    });
+    assert.equal(debateResult.validation.errors.length, 0);
+  });
+
+  test('debate-run record captures failed rebuttal lane diagnostics and deviations', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const clock = createFakeClock();
+    const workflow = createWorkflowPlan({
+      requestedWorkflow: 'debate',
+      phase: 'production',
+      model: 'codex',
+      ownership: { effectivePhase: 'production', artifact: 'diff plus tests' },
+      gate: null,
+      debate: { comparators: ['claude'], rebuttal: 'codex', synthesis: 'claude' },
+    });
+
+    await executeWorkflow(
+      { phase: 'production', risk: 'standard', gate: null, workflow },
+      {
+        runId: 'hermes-2026-07-07T19-04-07-684Z',
+        async runStep({ step }) {
+          clock.advance(1);
+          if (step.role === 'rebuttal') {
+            return { code: 9, output: 'rebuttal failed' };
+          }
+          return {
+            code: 0,
+            output: step.role === 'synthesis' ? 'FINAL VERDICT: APPROVE' : 'comparator ok',
+          };
+        },
+        writeRunLedger(ledger) {
+          return writeRunLedger(ledger, { root, fs, envSecrets: [] });
+        },
+        writeDebateRunRecord(ledger, options) {
+          return writeDebateRunRecord(ledger, {
+            ...options,
+            root,
+            fs,
+            clock: () => clock.now(),
+            io: captured.io,
+          });
+        },
+        appendRunEvent: null,
+        root,
+        clock: () => clock.now(),
+        io: captured.io,
+      }
+    );
+
+    const debateFile = [...fs.files.keys()].find((file) => file.includes('debate-run-'));
+    const debateRun = JSON.parse(fs.files.get(debateFile));
+    const rebuttalLane = debateRun.lanes.find((lane) => lane.lane === 'rebuttal');
+    assert.equal(rebuttalLane.status, 'failed');
+    assert.equal(
+      debateRun.deviationsFromSpec.some((entry) => entry.what === 'rebuttal lane failed'),
+      true
+    );
+    assert.deepEqual(debateRun.providerDiagnostics, [
+      {
+        provider: 'codex',
+        status: 'nonzero_exit',
+        detail: 'rebuttal lane exited with code 9',
+      },
+    ]);
+  });
+
+  test('debate-run record is still written when synthesis is skipped', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const clock = createFakeClock();
+    const workflow = {
+      selected: 'debate',
+      steps: [
+        { role: 'comparator', model: 'claude', action: 'compare' },
+        {
+          role: 'rebuttal',
+          model: 'claude',
+          action: 'verify and rebut comparator critiques against ground truth',
+        },
+      ],
+    };
+
+    await executeWorkflow(
+      { phase: 'production', risk: 'standard', gate: null, workflow },
+      {
+        runId: 'hermes-2026-07-07T19-04-07-684Z',
+        async runStep({ step }) {
+          clock.advance(1);
+          return { code: 0, output: `${step.role} output` };
+        },
+        writeRunLedger(ledger) {
+          return writeRunLedger(ledger, { root, fs, envSecrets: [] });
+        },
+        writeDebateRunRecord(ledger, options) {
+          return writeDebateRunRecord(ledger, {
+            ...options,
+            root,
+            fs,
+            clock: () => clock.now(),
+            io: captured.io,
+          });
+        },
+        appendRunEvent: null,
+        root,
+        clock: () => clock.now(),
+        io: captured.io,
+      }
+    );
+
+    const debateFile = [...fs.files.keys()].find((file) => file.includes('debate-run-'));
+    assert.equal(Boolean(debateFile), true);
+    const debateRun = JSON.parse(fs.files.get(debateFile));
+    assert.equal(debateRun.synthesisFile, null);
+    assert.equal(debateRun.finalVerdict, null);
+    assert.equal(
+      debateRun.deviationsFromSpec.some((entry) => entry.what === 'synthesis step skipped'),
+      true
+    );
+  });
+
+  test('non-debate workflow does not emit a debate-run record', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    let debateWrites = 0;
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          { role: 'owner', model: 'codex', action: 'execute' },
+          { role: 'reviewer', model: 'claude', action: 'review' },
+        ],
+      },
+    };
+
+    await executeWorkflow(plan, {
+      async runStep({ step }) {
+        return { code: 0, approved: step.role === 'reviewer', output: `${step.role} output` };
+      },
+      writeRunLedger(ledger) {
+        return writeRunLedger(ledger, { root, fs, envSecrets: [] });
+      },
+      writeDebateRunRecord() {
+        debateWrites += 1;
+      },
+      appendRunEvent: null,
+      root,
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.equal(debateWrites, 0);
+    assert.equal([...fs.files.keys()].some((file) => file.includes('debate-run-')), false);
   });
 
   test('appendRunEvent appends scrubbed JSONL through the injected fs', () => {

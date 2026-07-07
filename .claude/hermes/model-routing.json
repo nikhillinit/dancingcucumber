@@ -56,7 +56,7 @@
       "artifact": "PR-ready summary", "gate": "npm run lint"
     }
   },
-  "debate": { "comparators": ["claude", "codex", "kimi"], "synthesis": "claude" },
+  "debate": { "comparators": ["claude", "codex", "kimi"], "rebuttal": "claude", "synthesis": "claude" },
   "longContextModel": "kimi",
   "longContextTriggers": ["full repo audit", "repo-wide", "system-wide", "architecture scan", "cross-module trace"],
   "manualFlags": { "--claude": "claude", "--codex": "codex", "--kimi": "kimi", "--gemini": "gemini", "--agy": "agy" },
