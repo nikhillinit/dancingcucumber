@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = dirname(__filename);
 const LEGACY_COMMANDS = new Set(['bootstrap', 'smoke', 'enable-algorithms', 'doctor']);
-const DOCTOR_PROVIDERS = ['claude', 'codex', 'kimi-cli', 'gemini', 'agy'];
+const DOCTOR_PROVIDERS = ['claude', 'codex', 'kimi', 'gemini', 'agy'];
 const WORKFLOW_MODES = new Set(['auto', 'solo', 'pair', 'chain', 'debate', 'review']);
 const MODEL_OVERRIDES = new Set(['claude', 'codex', 'kimi', 'gemini', 'agy']);
 const WORKFLOW_DEFERRED_BEHAVIOR = [
@@ -26,6 +26,9 @@ const WORKFLOW_DEFERRED_BEHAVIOR = [
 ];
 const DEFAULT_MODEL_TIMEOUT_MS = 600000;
 const STALE_RUN_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_PROVIDER_COOLDOWN_MINUTES = 60;
+const COOLDOWN_REPEAT_WINDOW_MS = 10 * 60 * 1000;
+const COOLDOWN_MAX_MS = 24 * 60 * 60 * 1000;
 const MODEL_FAILURE = Object.freeze({
   SPAWN_ERROR: 'spawn_error',
   TIMEOUT: 'timeout',
@@ -505,6 +508,239 @@ function loadText(filePath, { optional = false, fs = { existsSync, readFileSync 
     throw new Error(`Missing text file: ${filePath}`);
   }
   return fs.readFileSync(filePath, 'utf8');
+}
+
+function clockDate(clock = () => new Date()) {
+  if (typeof clock?.now === 'function') return clock.now();
+  if (typeof clock === 'function') return clock();
+  return new Date();
+}
+
+function providerStatePath(root = ROOT) {
+  return join(root, 'ai-logs', 'hermes', 'provider-state.json');
+}
+
+function normalizeProviderState(record) {
+  const providers = {};
+  for (const [provider, entry] of Object.entries(record?.providers || {})) {
+    if (!entry || typeof entry !== 'object') continue;
+    const untilMs = new Date(entry.coolingUntil).getTime();
+    if (!Number.isFinite(untilMs)) continue;
+    providers[provider] = {
+      coolingUntil: new Date(untilMs).toISOString(),
+      reason: String(entry.reason || 'rate_limited'),
+      triggeredAt: entry.triggeredAt || null,
+    };
+  }
+  return { providers };
+}
+
+function warnProviderState(io, message) {
+  io.stderr.write(`[hermes] WARNING: ${message}\n`);
+}
+
+function createProviderCooldownStore({
+  root = ROOT,
+  fs = { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync },
+  clock = () => new Date(),
+  io = process,
+} = {}) {
+  const file = providerStatePath(root);
+  let warnedCorrupt = false;
+  let warnedWrite = false;
+
+  const readState = () => {
+    if (!fs.existsSync(file)) return { providers: {} };
+    try {
+      return normalizeProviderState(JSON.parse(fs.readFileSync(file, 'utf8')));
+    } catch (error) {
+      if (!warnedCorrupt) {
+        warnedCorrupt = true;
+        warnProviderState(
+          io,
+          `provider cooldown state was corrupt; sidelining ${file} and starting empty: ${error.message}`
+        );
+      }
+      try {
+        fs.renameSync(file, `${file}.corrupt`);
+      } catch {
+        // Advisory state must fail open even when the corrupt file cannot be moved.
+      }
+      return { providers: {} };
+    }
+  };
+
+  const maxState = (left, right) => {
+    const merged = normalizeProviderState(left);
+    for (const [provider, entry] of Object.entries(normalizeProviderState(right).providers)) {
+      const prior = merged.providers[provider];
+      if (!prior || new Date(entry.coolingUntil).getTime() > new Date(prior.coolingUntil).getTime()) {
+        merged.providers[provider] = entry;
+      }
+    }
+    return merged;
+  };
+
+  const writeState = (nextState) => {
+    // Re-read immediately before writing so a parallel run cannot erase a longer advisory cooldown.
+    const merged = maxState(readState(), nextState);
+    const tempFile = `${file}.${process.pid}.${clockDate(clock).getTime()}.tmp`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        fs.mkdirSync(dirname(file), { recursive: true });
+        fs.writeFileSync(tempFile, `${JSON.stringify(merged, null, 2)}\n`);
+        fs.renameSync(tempFile, file);
+        return merged;
+      } catch (error) {
+        if ((error?.code === 'EPERM' || error?.code === 'EBUSY') && attempt === 0) {
+          continue;
+        }
+        if (!warnedWrite) {
+          warnedWrite = true;
+          warnProviderState(io, `failed to persist provider cooldown state; skipping: ${error.message}`);
+        }
+        return nextState;
+      }
+    }
+    return nextState;
+  };
+
+  const coolingUntil = (provider) => readState().providers?.[provider]?.coolingUntil || null;
+
+  return {
+    coolingUntil,
+    isCooling(provider) {
+      const until = coolingUntil(provider);
+      return until ? new Date(until).getTime() > clockDate(clock).getTime() : false;
+    },
+    window(provider) {
+      return this.isCooling(provider) ? coolingUntil(provider) : '-';
+    },
+    setCooldown(provider, { routing = {}, message = '' } = {}) {
+      const now = clockDate(clock);
+      const nowMs = now.getTime();
+      const state = readState();
+      const prior = state.providers?.[provider] || null;
+      const priorMs = prior ? new Date(prior.coolingUntil).getTime() : NaN;
+      const defaultMs = cooldownDefaultMinutes(provider, routing.rateLimits?.defaults) * 60 * 1000;
+      const explicitUntilMs = parseExplicitCooldownUntil(message, nowMs);
+      let durationMs = explicitUntilMs ? explicitUntilMs - nowMs : defaultMs;
+      if (!Number.isFinite(durationMs) || durationMs <= 0) {
+        durationMs = defaultMs;
+      }
+      const repeat =
+        Number.isFinite(priorMs) &&
+        (priorMs > nowMs || nowMs <= priorMs + COOLDOWN_REPEAT_WINDOW_MS);
+      if (repeat) {
+        // Repeat means active cooling or a trigger within ten minutes after expiry.
+        durationMs *= 2;
+      }
+      durationMs = Math.min(durationMs, COOLDOWN_MAX_MS);
+      const coolingUntilValue = new Date(nowMs + durationMs).toISOString();
+      state.providers[provider] = {
+        coolingUntil: coolingUntilValue,
+        reason: 'rate_limited',
+        triggeredAt: now.toISOString(),
+      };
+      const persisted = writeState(state);
+      return persisted.providers?.[provider] || state.providers[provider];
+    },
+  };
+}
+
+function cooldownDefaultMinutes(provider, defaults = {}) {
+  const providerDefaults = defaults.providers || defaults.providerMinutes || {};
+  const value =
+    providerDefaults[provider] ??
+    defaults[provider] ??
+    defaults[`${provider}Minutes`] ??
+    defaults.defaultMinutes ??
+    defaults.fallbackMinutes ??
+    DEFAULT_PROVIDER_COOLDOWN_MINUTES;
+  const minutes = Number(value);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PROVIDER_COOLDOWN_MINUTES;
+}
+
+function parseExplicitCooldownUntil(message, nowMs) {
+  const text = String(message || '');
+  const relative = text.match(
+    /(?:retry\s*after|try\s*again\s*in)\s*:?\s*(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h)?/i
+  );
+  if (relative) {
+    const amount = Number(relative[1]);
+    const unit = String(relative[2] || 'seconds').toLowerCase();
+    const scale = unit.startsWith('h') ? 60 * 60 * 1000 : unit.startsWith('m') ? 60 * 1000 : 1000;
+    return nowMs + amount * scale;
+  }
+
+  const absolute = text.match(
+    /(?:retry\s*after|resets?\s*(?:at|on)?|reset\s*time)\s*:?\s*([^\r\n;]+)/i
+  );
+  if (!absolute) return null;
+  const parsed = Date.parse(absolute[1].trim());
+  return Number.isFinite(parsed) && parsed > nowMs ? parsed : null;
+}
+
+function compileRateLimitSignatures(rateLimits = {}) {
+  if (rateLimits?.enabled !== true) return {};
+  const compiled = {};
+  for (const [provider, entry] of Object.entries(rateLimits.signatures || {})) {
+    const items = Array.isArray(entry) ? entry : [entry];
+    compiled[provider] = items
+      .map((item) => {
+        const source = typeof item === 'string' ? item : item?.source;
+        if (!source) return null;
+        return new RegExp(source, typeof item === 'string' ? 'i' : item.flags || '');
+      })
+      .filter(Boolean);
+  }
+  return compiled;
+}
+
+function resolveRateLimitSignatures({ configured, injected, provider }) {
+  const source = injected ?? configured;
+  if (Array.isArray(source)) return source;
+  return source?.[provider] || [];
+}
+
+function diagnosticTextForResult(result) {
+  return [result?.output, result?.stderr, result?.error?.message, result?.error?.code]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function scanUnclassifiedFailures({
+  root = ROOT,
+  fs = { readdirSync, readFileSync },
+} = {}) {
+  const dir = getRunsDir(root);
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return 0;
+  }
+
+  let count = 0;
+  for (const name of names) {
+    if (!String(name).endsWith('.json') || String(name).endsWith('.events.jsonl')) continue;
+    try {
+      const record = JSON.parse(fs.readFileSync(join(dir, name), 'utf8'));
+      for (const ledger of record.failureLedger || []) {
+        for (const diagnostic of ledger.providerDiagnostics || []) {
+          if (
+            diagnostic?.status === 'failed' &&
+            /\bfailed \((?!rate_limited\))/i.test(String(diagnostic.detail || ''))
+          ) {
+            count += 1;
+          }
+        }
+      }
+    } catch {
+      // Doctor best-effort evidence should not mask provider readiness.
+    }
+  }
+  return count;
 }
 
 function scoreSpecialist(task, specialists = {}, scoring = {}) {
@@ -1105,6 +1341,7 @@ function buildDoctorReport({
   env = process.env,
   providers = DOCTOR_PROVIDERS,
   commandExists: checkCommandExists = commandExists,
+  cooldownStore = null,
 }) {
   return providers.map((provider) => {
     const commandConfig = findDoctorCommandConfig(routing, provider);
@@ -1118,6 +1355,7 @@ function buildDoctorReport({
       bin,
       source,
       found: checkCommandExists(bin),
+      window: cooldownStore?.window(provider) || '-',
     };
   });
 }
@@ -1179,12 +1417,13 @@ function scanStaleRunLedgers({
 
 function formatDoctorReport(report) {
   const rows = [
-    ['Provider', 'Binary', 'Source', 'Status'],
-    ...report.map(({ provider, bin, source, found }) => [
+    ['Provider', 'Binary', 'Source', 'Status', 'WINDOW'],
+    ...report.map(({ provider, bin, source, found, window = '-' }) => [
       provider,
       bin,
       source,
       found ? 'found' : 'missing',
+      window || '-',
     ]),
   ];
   const widths = rows[0].map((_, index) =>
@@ -1197,9 +1436,16 @@ function formatDoctorReport(report) {
   return [formatRow(rows[0]), divider, ...rows.slice(1).map(formatRow)].join('\n');
 }
 
-function printDoctorReport(report, stdout = process.stdout, { staleRuns = [] } = {}) {
+function printDoctorReport(
+  report,
+  stdout = process.stdout,
+  { staleRuns = [], unclassifiedFailures = null } = {}
+) {
   stdout.write('Hermes CLI doctor\n');
   stdout.write(`${formatDoctorReport(report)}\n`);
+  if (Number.isInteger(unclassifiedFailures)) {
+    stdout.write(`\nunclassified failures: ${unclassifiedFailures}\n`);
+  }
   if (staleRuns.length > 0) {
     stdout.write('\nStale in-progress runs (>24h)\n');
     for (const run of staleRuns) {
@@ -1259,6 +1505,7 @@ function matchesRateLimitSignature(text, signatures = DEFAULT_RATE_LIMIT_SIGNATU
 }
 
 function classifyModelFailure({
+  model,
   code,
   output,
   stderr,
@@ -1268,9 +1515,13 @@ function classifyModelFailure({
   rateLimitSignatures = DEFAULT_RATE_LIMIT_SIGNATURES,
 }) {
   const diagnosticText = [output, stderr, error?.message, error?.code].filter(Boolean).join('\n');
+  const providerSignatures = resolveRateLimitSignatures({
+    configured: rateLimitSignatures,
+    provider: model,
+  });
 
   if (timedOut) return MODEL_FAILURE.TIMEOUT;
-  if (matchesRateLimitSignature(diagnosticText, rateLimitSignatures)) {
+  if (matchesRateLimitSignature(diagnosticText, providerSignatures)) {
     return MODEL_FAILURE.RATE_LIMITED;
   }
   if (error) return MODEL_FAILURE.SPAWN_ERROR;
@@ -1350,6 +1601,7 @@ function runModelAttempt({
       settle({
         code: 1,
         failure: classifyModelFailure({
+          model,
           code: 1,
           output,
           stderr,
@@ -1371,6 +1623,7 @@ function runModelAttempt({
       settle({
         code: 1,
         failure: classifyModelFailure({
+          model,
           code: 1,
           output,
           stderr,
@@ -1397,6 +1650,7 @@ function runModelAttempt({
       settle({
         code: 1,
         failure: classifyModelFailure({
+          model,
           code: 1,
           output,
           stderr,
@@ -1412,6 +1666,7 @@ function runModelAttempt({
       settle({
         code: exitCode,
         failure: classifyModelFailure({
+          model,
           code: exitCode,
           output,
           stderr,
@@ -1465,7 +1720,9 @@ async function executeModelCommand(
     spawn: spawnImpl = spawn,
     killTree = null,
     clock = realClock,
-    rateLimitSignatures = DEFAULT_RATE_LIMIT_SIGNATURES,
+    rateLimitSignatures,
+    providerCooldownStore = null,
+    providerStateFs = { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync },
     captureOutput = false,
     appendRunEvent: appendEvent = null,
     runId = null,
@@ -1494,6 +1751,14 @@ async function executeModelCommand(
   }
 
   const timeoutMs = Number(commandConfig.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS);
+  const configuredRateLimitSignatures = compileRateLimitSignatures(routing.rateLimits || {});
+  const effectiveRateLimitSignatures =
+    rateLimitSignatures === undefined ? configuredRateLimitSignatures : rateLimitSignatures;
+  const cooldownStore =
+    providerCooldownStore ||
+    (routing.rateLimits?.enabled === true
+      ? createProviderCooldownStore({ root, fs: providerStateFs, clock, io })
+      : null);
   let result = null;
   const emitEvent = createRunEventEmitter({
     runId,
@@ -1521,7 +1786,7 @@ async function executeModelCommand(
       killTree,
       clock,
       captureOutput,
-      rateLimitSignatures,
+      rateLimitSignatures: effectiveRateLimitSignatures,
       emitEvent,
     });
     if (result.failure) {
@@ -1534,6 +1799,17 @@ async function executeModelCommand(
         code: result.code,
         excerpt,
       });
+      if (result.failure === MODEL_FAILURE.RATE_LIMITED && cooldownStore) {
+        const cooldown = cooldownStore.setCooldown(model, {
+          routing,
+          message: diagnosticTextForResult(result),
+        });
+        emitEvent({
+          type: RUN_EVENT_TYPES.COOLDOWN_SET,
+          provider: model,
+          coolingUntil: cooldown.coolingUntil,
+        });
+      }
     }
     if (result.failure !== MODEL_FAILURE.SPAWN_ERROR) {
       return result;
@@ -1765,6 +2041,8 @@ function createLiveRunStep({
   envLoader,
   scrubber = scrubSecrets,
   commandExists: checkCommandExists = commandExists,
+  providerCooldownStore = null,
+  providerStateFs = { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync },
 } = {}) {
   const promptEnvSecrets = resolveEnvSecrets({ envSecrets, envLoader, envPath });
 
@@ -1814,6 +2092,8 @@ function createLiveRunStep({
       envLoader,
       scrubber,
       commandExists: checkCommandExists,
+      providerCooldownStore,
+      providerStateFs,
     });
     const result = { code, output };
     if (step.role === 'reviewer') {
@@ -2636,9 +2916,15 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const clock = deps.clock || (() => new Date());
   const root = deps.root || ROOT;
   const fsReader = deps.fs || { existsSync, readFileSync, readdirSync };
+  const providerStateFs =
+    deps.providerStateFs ||
+    deps.fs || { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync };
+  const providerCooldownStore =
+    deps.providerCooldownStore ||
+    createProviderCooldownStore({ root, fs: providerStateFs, clock, io });
   const appendEvent = deps.appendRunEvent === undefined ? appendRunEvent : deps.appendRunEvent;
   const checkCommandExists = deps.commandExists || commandExists;
-  const isCooling = deps.isCooling || (() => false);
+  const isCooling = deps.isCooling || ((provider) => providerCooldownStore.isCooling(provider));
   const ledgerScrubOptions = {
     envSecrets: deps.envSecrets,
     envPath: deps.envPath || join(root, '.env'),
@@ -2679,13 +2965,15 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         env,
         providers: DOCTOR_PROVIDERS,
         commandExists: checkCommandExists,
+        cooldownStore: providerCooldownStore,
       });
       const staleRuns = scanStaleRunLedgers({
         root,
         fs: fsReader,
         clock,
       });
-      printDoctorReport(report, io.stdout, { staleRuns });
+      const unclassifiedFailures = scanUnclassifiedFailures({ root, fs: fsReader });
+      printDoctorReport(report, io.stdout, { staleRuns, unclassifiedFailures });
       return 0;
     }
 
@@ -2866,6 +3154,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         eventClock: clock,
         io,
         commandExists: checkCommandExists,
+        providerCooldownStore,
+        providerStateFs,
       });
     const record = await executeWorkflow(plan, {
       runStep,
@@ -2889,6 +3179,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       envPath: deps.envPath,
       envLoader: deps.envLoader,
       scrubber: deps.scrubber,
+      providerCooldownStore,
+      providerStateFs,
     });
     return record.exitCode;
   }
@@ -2967,6 +3259,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         envPath: deps.envPath || join(root, '.env'),
         envLoader: deps.envLoader,
         scrubber: deps.scrubber,
+        providerCooldownStore,
+        providerStateFs,
       },
     });
   } else {
@@ -2982,6 +3276,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       envLoader: deps.envLoader,
       scrubber: deps.scrubber,
       io,
+      providerCooldownStore,
+      providerStateFs,
     });
     modelResult = { code, model: plan.model };
   }
