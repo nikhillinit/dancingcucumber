@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +25,7 @@ const WORKFLOW_DEFERRED_BEHAVIOR = [
   'review platform automation',
 ];
 const DEFAULT_MODEL_TIMEOUT_MS = 600000;
+const STALE_RUN_MS = 24 * 60 * 60 * 1000;
 const MODEL_FAILURE = Object.freeze({
   SPAWN_ERROR: 'spawn_error',
   TIMEOUT: 'timeout',
@@ -49,6 +58,18 @@ const SCRUB_MARKER = Object.freeze({
   token: '[SCRUBBED:token]',
   keyvalue: '[SCRUBBED:keyvalue]',
   envvalue: '[SCRUBBED:envvalue]',
+});
+const RUN_EVENT_TYPES = Object.freeze({
+  STEP_START: 'step_start',
+  STEP_END: 'step_end',
+  GATE_RESULT: 'gate_result',
+  DISPATCH_ERROR: 'dispatch_error',
+  TIMEOUT_KILL: 'timeout_kill',
+  RETRY_ATTEMPT: 'retry_attempt',
+  FALLBACK: 'fallback',
+  COOLDOWN_SET: 'cooldown_set',
+  SCRUB_FAILURE: 'scrub_failure',
+  LEDGER_FLUSH_FAILURE: 'ledger_flush_failure',
 });
 const MIN_ENV_SECRET_LENGTH = 8;
 const OUTPUT_BODY_FIELDS = new Set(['output', 'stdout', 'stderr', 'body', 'text']);
@@ -229,6 +250,117 @@ function prepareRunLedgerRecord(record, options = {}) {
   return prepared;
 }
 
+function getRunsDir(root = ROOT) {
+  return join(root, 'ai-logs', 'hermes', 'runs');
+}
+
+function getRunLedgerPath(runId, { root = ROOT } = {}) {
+  return join(getRunsDir(root), `${runId}.json`);
+}
+
+function getRunEventsPath(runId, { root = ROOT } = {}) {
+  return join(getRunsDir(root), `${runId}.events.jsonl`);
+}
+
+function removeOutputBodyFields(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => removeOutputBodyFields(entry));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const next = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (OUTPUT_BODY_FIELDS.has(key)) continue;
+    next[key] = removeOutputBodyFields(entry);
+  }
+  return next;
+}
+
+function prepareMetadataRecord(record, options = {}) {
+  const envSecrets = resolveEnvSecrets(options);
+  const scrubber = options.scrubber || scrubSecrets;
+  let scrubError = false;
+
+  const scrubValue = (value) => {
+    if (typeof value === 'string') {
+      const scrubbed = scrubOutputBody(value, { scrubber, envSecrets });
+      scrubError = scrubError || scrubbed.error;
+      return scrubbed.text;
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => scrubValue(entry));
+    }
+    if (value && typeof value === 'object') {
+      const next = {};
+      for (const [key, entry] of Object.entries(value)) {
+        next[key] = scrubValue(entry);
+      }
+      return next;
+    }
+    return value;
+  };
+
+  return {
+    record: scrubValue(removeOutputBodyFields(record)),
+    scrubError,
+  };
+}
+
+function hasScrubError(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (value.scrubError === true) return true;
+  if (Array.isArray(value)) return value.some((entry) => hasScrubError(entry));
+  return Object.values(value).some((entry) => hasScrubError(entry));
+}
+
+function compactStepRecord(step) {
+  return {
+    role: step.role,
+    model: step.model,
+    attempt: step.attempt,
+    code: step.code,
+    approved: step.approved,
+    durationMs: step.durationMs,
+  };
+}
+
+function formatAgeMs(ageMs) {
+  const hours = Math.floor(ageMs / (60 * 60 * 1000));
+  return `${hours}h`;
+}
+
+function warnLedgerFailure(io, message) {
+  io.stderr.write(`[hermes] WARNING: failed to write run ledger: ${message}\n`);
+}
+
+function warnEventFailure(io, message) {
+  io.stderr.write(`[hermes] WARNING: failed to write run event log: ${message}\n`);
+}
+
+function writePreparedLedgerBestEffort({
+  ledgerWriter,
+  record,
+  scrubOptions,
+  io = process,
+  emitEvent = null,
+}) {
+  if (!ledgerWriter) return;
+  try {
+    const prepared = prepareRunLedgerRecord(record, scrubOptions);
+    if (hasScrubError(prepared) && emitEvent) {
+      emitEvent({ type: RUN_EVENT_TYPES.SCRUB_FAILURE, where: 'run_ledger' });
+    }
+    ledgerWriter(prepared, { envSecrets: [] });
+  } catch (error) {
+    warnLedgerFailure(io, error.message);
+    if (emitEvent) {
+      emitEvent({ type: RUN_EVENT_TYPES.LEDGER_FLUSH_FAILURE, message: error.message });
+    }
+  }
+}
+
 function normalizeEntrypointPath(value) {
   return String(value || '')
     .replace(/^file:\/\//, '')
@@ -337,19 +469,26 @@ function parseArgs(argv = []) {
   return options;
 }
 
-function loadJSON(filePath) {
-  if (!existsSync(filePath)) {
+function loadJSON(filePath, { fs = { existsSync, readFileSync } } = {}) {
+  if (!fs.existsSync(filePath)) {
     throw new Error(`Missing JSON file: ${filePath}`);
   }
-  return JSON.parse(readFileSync(filePath, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new SyntaxError(`Invalid JSON in ${filePath}: ${error.message}`);
+    }
+    throw error;
+  }
 }
 
-function loadText(filePath, { optional = false } = {}) {
-  if (!existsSync(filePath)) {
+function loadText(filePath, { optional = false, fs = { existsSync, readFileSync } } = {}) {
+  if (!fs.existsSync(filePath)) {
     if (optional) return '';
     throw new Error(`Missing text file: ${filePath}`);
   }
-  return readFileSync(filePath, 'utf8');
+  return fs.readFileSync(filePath, 'utf8');
 }
 
 function scoreSpecialist(task, specialists = {}, scoring = {}) {
@@ -727,6 +866,48 @@ function buildProviderAvailability({
   }).map(({ provider, bin, found }) => ({ provider, bin, found }));
 }
 
+function scanStaleRunLedgers({
+  root = ROOT,
+  fs = { readdirSync, readFileSync },
+  clock = () => new Date(),
+  staleMs = STALE_RUN_MS,
+} = {}) {
+  const dir = getRunsDir(root);
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+
+  const nowMs = clock().getTime();
+  const stale = [];
+  for (const name of names) {
+    if (!String(name).endsWith('.json') || String(name).endsWith('.events.jsonl')) continue;
+    const file = join(dir, name);
+    try {
+      const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (record.status !== 'in-progress') continue;
+      const stamp = record.updatedAt || record.startedAt;
+      const updatedMs = new Date(stamp).getTime();
+      if (!Number.isFinite(updatedMs)) continue;
+      const ageMs = nowMs - updatedMs;
+      if (ageMs > staleMs) {
+        stale.push({
+          runId: record.runId || String(name).replace(/\.json$/, ''),
+          ageMs,
+          age: formatAgeMs(ageMs),
+        });
+      }
+    } catch {
+      // Doctor should keep reporting provider readiness even if one ledger is malformed.
+    }
+  }
+
+  stale.sort((left, right) => right.ageMs - left.ageMs);
+  return stale;
+}
+
 function formatDoctorReport(report) {
   const rows = [
     ['Provider', 'Binary', 'Source', 'Status'],
@@ -747,9 +928,15 @@ function formatDoctorReport(report) {
   return [formatRow(rows[0]), divider, ...rows.slice(1).map(formatRow)].join('\n');
 }
 
-function printDoctorReport(report, stdout = process.stdout) {
+function printDoctorReport(report, stdout = process.stdout, { staleRuns = [] } = {}) {
   stdout.write('Hermes CLI doctor\n');
   stdout.write(`${formatDoctorReport(report)}\n`);
+  if (staleRuns.length > 0) {
+    stdout.write('\nStale in-progress runs (>24h)\n');
+    for (const run of staleRuns) {
+      stdout.write(`- ${run.runId} age ${run.age}\n`);
+    }
+  }
 }
 
 function createChildEnv(env = process.env) {
@@ -847,6 +1034,7 @@ function createModelResult({
 }
 
 function runModelAttempt({
+  model,
   bin,
   args,
   prompt,
@@ -857,6 +1045,7 @@ function runModelAttempt({
   clock,
   captureOutput,
   rateLimitSignatures,
+  emitEvent = null,
 }) {
   const childEnv = createChildEnv(env);
   const stdio = captureOutput ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'inherit', 'inherit'];
@@ -975,6 +1164,14 @@ function runModelAttempt({
           `[hermes] WARNING: failed to kill process tree for pid ${child.pid}: ${error.message}\n`
         );
       }
+      if (emitEvent) {
+        emitEvent({
+          type: RUN_EVENT_TYPES.TIMEOUT_KILL,
+          model,
+          pid: child.pid,
+          timeoutMs,
+        });
+      }
       settle({
         code: 124,
         failure: MODEL_FAILURE.TIMEOUT,
@@ -1001,6 +1198,17 @@ async function executeModelCommand(
     clock = realClock,
     rateLimitSignatures = DEFAULT_RATE_LIMIT_SIGNATURES,
     captureOutput = false,
+    appendRunEvent: appendEvent = null,
+    runId = null,
+    role = null,
+    root = ROOT,
+    eventFs,
+    eventClock = typeof clock.now === 'function' ? () => clock.now() : () => new Date(),
+    envSecrets,
+    envPath = join(root, '.env'),
+    envLoader,
+    scrubber = scrubSecrets,
+    io = process,
   } = {}
 ) {
   const commandConfig = routing.commands?.[model];
@@ -1017,10 +1225,23 @@ async function executeModelCommand(
 
   const timeoutMs = Number(commandConfig.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS);
   let result = null;
+  const emitEvent = createRunEventEmitter({
+    runId,
+    appendEvent,
+    root,
+    fs: eventFs,
+    clock: eventClock,
+    envSecrets,
+    envPath,
+    envLoader,
+    scrubber,
+    io,
+  });
 
   // Pipeline: sanitize env -> spawn -> write prompt -> classify -> retry once.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     result = await runModelAttempt({
+      model,
       bin,
       args: commandConfig.args || [],
       prompt,
@@ -1031,9 +1252,30 @@ async function executeModelCommand(
       clock,
       captureOutput,
       rateLimitSignatures,
+      emitEvent,
     });
+    if (result.failure) {
+      const excerpt = String(result.stderr || result.error?.message || result.output || '').slice(0, 500);
+      emitEvent({
+        type: RUN_EVENT_TYPES.DISPATCH_ERROR,
+        role,
+        model,
+        failure: result.failure,
+        code: result.code,
+        excerpt,
+      });
+    }
     if (result.failure !== MODEL_FAILURE.SPAWN_ERROR) {
       return result;
+    }
+    if (attempt === 0) {
+      emitEvent({
+        type: RUN_EVENT_TYPES.RETRY_ATTEMPT,
+        role,
+        model,
+        failure: result.failure,
+        attempt: attempt + 1,
+      });
     }
   }
 
@@ -1103,8 +1345,15 @@ function createLiveRunStep({
   basePrompt = '',
   env = process.env,
   executor = executeModelCapture,
+  appendRunEvent: appendEvent = null,
+  runId = null,
+  root = ROOT,
+  eventFs,
+  modelClock = realClock,
+  eventClock = () => new Date(),
+  io = process,
   envSecrets,
-  envPath = join(ROOT, '.env'),
+  envPath = join(root, '.env'),
   envLoader,
   scrubber = scrubSecrets,
 } = {}) {
@@ -1142,7 +1391,20 @@ function createLiveRunStep({
       );
     }
 
-    const { code, output } = await executor(step.model, sections.join('\n'), routing, env);
+    const { code, output } = await executor(step.model, sections.join('\n'), routing, env, {
+      appendRunEvent: appendEvent,
+      runId,
+      role: step.role,
+      root,
+      eventFs,
+      clock: modelClock,
+      eventClock,
+      io,
+      envSecrets,
+      envPath,
+      envLoader,
+      scrubber,
+    });
     const result = { code, output };
     if (step.role === 'reviewer') {
       result.approved = parseApprovalSignal(output);
@@ -1195,12 +1457,99 @@ function writeRunLedger(
     scrubber = scrubSecrets,
   } = {}
 ) {
-  const dir = join(root, 'ai-logs', 'hermes', 'runs');
+  const dir = getRunsDir(root);
   fs.mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${record.runId}.json`);
+  const file = getRunLedgerPath(record.runId, { root });
   const prepared = prepareRunLedgerRecord(record, { envSecrets, envPath, envLoader, scrubber });
   fs.writeFileSync(file, `${JSON.stringify(prepared, null, 2)}\n`);
   return file;
+}
+
+function appendRunEvent(
+  runId,
+  event,
+  {
+    root = ROOT,
+    fs = { mkdirSync, appendFileSync },
+    clock = () => new Date(),
+    envSecrets,
+    envPath = join(root, '.env'),
+    envLoader,
+    scrubber = scrubSecrets,
+  } = {}
+) {
+  const dir = getRunsDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = getRunEventsPath(runId, { root });
+  const payload = {
+    ts: clock().toISOString(),
+    type: event?.type,
+    ...(event || {}),
+  };
+  const prepared = prepareMetadataRecord(payload, { envSecrets, envPath, envLoader, scrubber });
+  if (typeof prepared.record.excerpt === 'string' && prepared.record.excerpt.length > 500) {
+    prepared.record.excerpt = prepared.record.excerpt.slice(0, 500);
+  }
+  fs.appendFileSync(file, `${JSON.stringify(prepared.record)}\n`);
+  return file;
+}
+
+function writeRunCheckpoint(
+  record,
+  {
+    root = ROOT,
+    fs = { mkdirSync, writeFileSync, renameSync },
+    envSecrets,
+    envPath = join(root, '.env'),
+    envLoader,
+    scrubber = scrubSecrets,
+  } = {}
+) {
+  const dir = getRunsDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = getRunLedgerPath(record.runId, { root });
+  const tempFile = `${file}.tmp`;
+  const prepared = prepareMetadataRecord(record, { envSecrets, envPath, envLoader, scrubber });
+  fs.writeFileSync(tempFile, `${JSON.stringify(prepared.record, null, 2)}\n`);
+  try {
+    fs.renameSync(tempFile, file);
+  } catch (error) {
+    if (error?.code === 'EPERM' || error?.code === 'EBUSY') {
+      fs.renameSync(tempFile, file);
+      return file;
+    }
+    throw error;
+  }
+  return file;
+}
+
+function createRunEventEmitter({
+  runId,
+  appendEvent,
+  root = ROOT,
+  fs,
+  clock = () => new Date(),
+  envSecrets,
+  envPath = join(root, '.env'),
+  envLoader,
+  scrubber = scrubSecrets,
+  io = process,
+}) {
+  if (!appendEvent || !runId) {
+    return () => {};
+  }
+
+  let warned = false;
+  return (event) => {
+    try {
+      appendEvent(runId, event, { root, fs, clock, envSecrets, envPath, envLoader, scrubber });
+    } catch (error) {
+      if (!warned) {
+        warned = true;
+        warnEventFailure(io, error.message);
+      }
+    }
+  };
 }
 
 function getGateRunPlan(plan, { skipPreflightGate = false } = {}) {
@@ -1276,11 +1625,36 @@ async function executeWorkflow(plan, deps = {}) {
   const ledgerWriter = deps.writeRunLedger === undefined ? null : deps.writeRunLedger;
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
+  const root = deps.root || ROOT;
+  const io = deps.io || process;
   const ledgerScrubOptions = {
     envSecrets: deps.envSecrets,
-    envPath: deps.envPath,
+    envPath: deps.envPath || join(root, '.env'),
     envLoader: deps.envLoader,
     scrubber: deps.scrubber,
+  };
+  const emitEvent = createRunEventEmitter({
+    runId,
+    appendEvent: deps.appendRunEvent === undefined ? null : deps.appendRunEvent,
+    root,
+    fs: deps.eventFs,
+    clock,
+    envSecrets: deps.envSecrets,
+    envPath: deps.envPath || join(root, '.env'),
+    envLoader: deps.envLoader,
+    scrubber: deps.scrubber,
+    io,
+  });
+  const checkpointWriter =
+    deps.writeRunCheckpoint === undefined
+      ? deps.checkpointFs
+        ? writeRunCheckpoint
+        : null
+      : deps.writeRunCheckpoint;
+  const checkpointOptions = {
+    root,
+    fs: deps.checkpointFs || { mkdirSync, writeFileSync, renameSync },
+    ...ledgerScrubOptions,
   };
   const availability =
     deps.availability ||
@@ -1304,8 +1678,42 @@ async function executeWorkflow(plan, deps = {}) {
   // comparator, synthesis). A crashed CLI must not be reported as success just
   // because the postflight gate passes.
   let stepFailureCode = 0;
+  const modelStepTotal = workflow.steps.filter((step) => step.model).length;
+  let cursor = { index: 0, total: modelStepTotal, role: null };
+  let finalized = false;
+  let gate = { command: plan.gate || null, skipped: !plan.gate, status: 0 };
+  const buildCheckpointRecord = (status, checkpointCursor = cursor) => ({
+    runId,
+    status,
+    updatedAt: clock().toISOString(),
+    workflow: workflow.selected,
+    phase: plan.phase,
+    risk: plan.risk,
+    repairs,
+    steps: records.map(compactStepRecord),
+    availability,
+    gate: {
+      command: gate.command ?? null,
+      status: gate.status ?? null,
+      skipped: gate.skipped ?? false,
+    },
+    cursor: checkpointCursor,
+  });
+  const flushCheckpoint = (status, checkpointCursor = cursor) => {
+    if (!checkpointWriter) return;
+    try {
+      checkpointWriter(buildCheckpointRecord(status, checkpointCursor), checkpointOptions);
+    } catch (error) {
+      warnLedgerFailure(io, error.message);
+      emitEvent({ type: RUN_EVENT_TYPES.LEDGER_FLUSH_FAILURE, message: error.message });
+    }
+  };
   const runRecorded = async (step, input, attempt) => {
+    const startedAt = clock();
+    emitEvent({ type: RUN_EVENT_TYPES.STEP_START, role: step.role, model: step.model });
     const result = await runStep({ step, input, notes: specialistNotes, plan, attempt, runId });
+    const endedAt = clock();
+    const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
     const code = result.code ?? 0;
     if (stepFailureCode === 0 && code !== 0) {
       stepFailureCode = code;
@@ -1316,8 +1724,19 @@ async function executeWorkflow(plan, deps = {}) {
       attempt,
       code,
       approved: result.approved ?? null,
+      durationMs,
       output: result.output ?? '',
     });
+    emitEvent({
+      type: RUN_EVENT_TYPES.STEP_END,
+      role: step.role,
+      model: step.model,
+      code,
+      durationMs,
+    });
+    // Checkpoints intentionally carry only compact step metadata, never bodies.
+    cursor = { index: records.length, total: modelStepTotal, role: step.role };
+    flushCheckpoint('in-progress', cursor);
     return result;
   };
 
@@ -1325,88 +1744,98 @@ async function executeWorkflow(plan, deps = {}) {
   let approved = true;
   let repairs = 0;
 
-  if (comparatorSteps.length > 0) {
-    const comparatorOutputs = [];
-    for (const comparatorStep of comparatorSteps) {
-      const comparator = await runRecorded(comparatorStep, null, 0);
-      comparatorOutputs.push(comparator.output ?? '');
-    }
-    if (synthesisStep) {
-      const synthesis = await runRecorded(synthesisStep, comparatorOutputs, 0);
-      artifact = synthesis.output ?? '';
-    }
-  } else {
-    if (ownerStep) {
-      const owner = await runRecorded(ownerStep, null, 0);
-      artifact = owner.output ?? '';
-    }
+  try {
+    if (comparatorSteps.length > 0) {
+      const comparatorOutputs = [];
+      for (const comparatorStep of comparatorSteps) {
+        const comparator = await runRecorded(comparatorStep, null, 0);
+        comparatorOutputs.push(comparator.output ?? '');
+      }
+      if (synthesisStep) {
+        const synthesis = await runRecorded(synthesisStep, comparatorOutputs, 0);
+        artifact = synthesis.output ?? '';
+      }
+    } else {
+      if (ownerStep) {
+        const owner = await runRecorded(ownerStep, null, 0);
+        artifact = owner.output ?? '';
+      }
 
-    if (specialistStep) {
-      const specialist = await runRecorded(specialistStep, artifact, 0);
-      specialistNotes = specialist.output ?? null;
-    }
+      if (specialistStep) {
+        const specialist = await runRecorded(specialistStep, artifact, 0);
+        specialistNotes = specialist.output ?? null;
+      }
 
-    if (reviewerStep) {
-      let review = await runRecorded(reviewerStep, artifact, 0);
-      approved = Boolean(review.approved);
-      while (!approved && repairs < maxRepairs && ownerStep) {
-        repairs += 1;
-        const repair = await runRecorded(ownerStep, review.output ?? '', repairs);
-        artifact = repair.output ?? artifact;
-        review = await runRecorded(reviewerStep, artifact, repairs);
+      if (reviewerStep) {
+        let review = await runRecorded(reviewerStep, artifact, 0);
         approved = Boolean(review.approved);
+        while (!approved && repairs < maxRepairs && ownerStep) {
+          repairs += 1;
+          const repair = await runRecorded(ownerStep, review.output ?? '', repairs);
+          artifact = repair.output ?? artifact;
+          review = await runRecorded(reviewerStep, artifact, repairs);
+          approved = Boolean(review.approved);
+        }
+      }
+
+      if (auditStep) {
+        await runRecorded(auditStep, artifact, repairs);
       }
     }
 
-    if (auditStep) {
-      await runRecorded(auditStep, artifact, repairs);
+    if (plan.gate) {
+      if (isProductionFinancial(plan)) {
+        assertGate(plan);
+      }
+      gate = runGate(plan.gate, { runner: gateRunner, throwOnFailure: false });
+      emitEvent({
+        type: RUN_EVENT_TYPES.GATE_RESULT,
+        command: gate.command,
+        status: gate.status ?? 0,
+      });
+    }
+
+    let exitCode = 0;
+    if (gate.status && gate.status !== 0) {
+      exitCode = gate.status;
+    } else if (stepFailureCode !== 0) {
+      exitCode = stepFailureCode;
+    } else if (reviewerStep && !approved) {
+      exitCode = 1;
+    }
+
+    const record = {
+      runId,
+      workflow: workflow.selected,
+      phase: plan.phase,
+      risk: plan.risk,
+      approved,
+      repairs,
+      steps: records,
+      availability,
+      gate: {
+        command: gate.command ?? null,
+        status: gate.status ?? 0,
+        skipped: gate.skipped ?? false,
+      },
+      exitCode,
+    };
+
+    writePreparedLedgerBestEffort({
+      ledgerWriter,
+      record,
+      scrubOptions: ledgerScrubOptions,
+      io,
+      emitEvent,
+    });
+    finalized = true;
+    return record;
+  } finally {
+    if (!finalized) {
+      // This catches ordinary router interruptions; a hard process kill is reconciled by doctor.
+      flushCheckpoint('interrupted', cursor);
     }
   }
-
-  let gate = { command: plan.gate || null, skipped: !plan.gate, status: 0 };
-  if (plan.gate) {
-    if (isProductionFinancial(plan)) {
-      assertGate(plan);
-    }
-    gate = runGate(plan.gate, { runner: gateRunner, throwOnFailure: false });
-  }
-
-  let exitCode = 0;
-  if (gate.status && gate.status !== 0) {
-    exitCode = gate.status;
-  } else if (stepFailureCode !== 0) {
-    exitCode = stepFailureCode;
-  } else if (reviewerStep && !approved) {
-    exitCode = 1;
-  }
-
-  const record = {
-    runId,
-    workflow: workflow.selected,
-    phase: plan.phase,
-    risk: plan.risk,
-    approved,
-    repairs,
-    steps: records,
-    availability,
-    gate: {
-      command: gate.command ?? null,
-      status: gate.status ?? 0,
-      skipped: gate.skipped ?? false,
-    },
-    exitCode,
-  };
-
-  if (ledgerWriter) {
-    try {
-      const prepared = prepareRunLedgerRecord(record, ledgerScrubOptions);
-      ledgerWriter(prepared, { envSecrets: [] });
-    } catch {
-      // ledger persistence is best-effort; the execution result is still returned
-    }
-  }
-
-  return record;
 }
 
 function printHelp(stdout = process.stdout) {
@@ -1542,9 +1971,12 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const gateRunner = deps.gateRunner || spawnSync;
   const ledgerWriter = deps.writeRunLedger === undefined ? writeRunLedger : deps.writeRunLedger;
   const clock = deps.clock || (() => new Date());
+  const root = deps.root || ROOT;
+  const fsReader = deps.fs || { existsSync, readFileSync, readdirSync };
+  const appendEvent = deps.appendRunEvent === undefined ? appendRunEvent : deps.appendRunEvent;
   const ledgerScrubOptions = {
     envSecrets: deps.envSecrets,
-    envPath: deps.envPath,
+    envPath: deps.envPath || join(root, '.env'),
     envLoader: deps.envLoader,
     scrubber: deps.scrubber,
   };
@@ -1556,16 +1988,39 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
 
   if (options.legacyCommand) {
     if (options.legacyCommand === 'doctor') {
+      const runId = generateRunId(clock());
       const routingPath =
-        env.HERMES_MODEL_ROUTING_FILE || join(ROOT, '.claude', 'hermes', 'model-routing.json');
-      const routing = deps.routing || loadJSON(routingPath);
+        env.HERMES_MODEL_ROUTING_FILE || join(root, '.claude', 'hermes', 'model-routing.json');
+      let routing;
+      try {
+        routing = deps.routing || loadJSON(routingPath, { fs: fsReader });
+      } catch (error) {
+        writePreparedLedgerBestEffort({
+          ledgerWriter,
+          record: {
+            runId,
+            phase: options.phase,
+            error: error.message,
+            exitCode: 1,
+            completedAt: clock().toISOString(),
+          },
+          scrubOptions: ledgerScrubOptions,
+          io,
+        });
+        throw error;
+      }
       const report = buildDoctorReport({
         routing,
         env,
         providers: DOCTOR_PROVIDERS,
         commandExists: deps.commandExists || commandExists,
       });
-      printDoctorReport(report, io.stdout);
+      const staleRuns = scanStaleRunLedgers({
+        root,
+        fs: fsReader,
+        clock,
+      });
+      printDoctorReport(report, io.stdout, { staleRuns });
       return 0;
     }
 
@@ -1587,13 +2042,33 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   }
 
   const routingPath =
-    env.HERMES_MODEL_ROUTING_FILE || join(ROOT, '.claude', 'hermes', 'model-routing.json');
-  const brainPath = env.HERMES_DEV_BRAIN_FILE || join(ROOT, 'DEV_BRAIN.md');
-  const soulPath = env.HERMES_SOUL_FILE || join(ROOT, '.claude', 'hermes', 'SOUL.md');
-  const routing = deps.routing || loadJSON(routingPath);
-  const brain = deps.brain ?? loadText(brainPath);
-  const soul = deps.soul ?? loadText(soulPath, { optional: true });
+    env.HERMES_MODEL_ROUTING_FILE || join(root, '.claude', 'hermes', 'model-routing.json');
+  const brainPath = env.HERMES_DEV_BRAIN_FILE || join(root, 'DEV_BRAIN.md');
+  const soulPath = env.HERMES_SOUL_FILE || join(root, '.claude', 'hermes', 'SOUL.md');
   const runId = generateRunId(clock());
+  const startedAt = clock().toISOString();
+  let routing;
+  let brain;
+  let soul;
+  try {
+    routing = deps.routing || loadJSON(routingPath, { fs: fsReader });
+    brain = deps.brain ?? loadText(brainPath, { fs: fsReader });
+    soul = deps.soul ?? loadText(soulPath, { optional: true, fs: fsReader });
+  } catch (error) {
+    writePreparedLedgerBestEffort({
+      ledgerWriter,
+      record: {
+        runId,
+        phase: options.phase,
+        error: error.message,
+        exitCode: 1,
+        completedAt: clock().toISOString(),
+      },
+      scrubOptions: ledgerScrubOptions,
+      io,
+    });
+    throw error;
+  }
   const plan = createRoutingPlan({
     phase: options.phase,
     task: options.task,
@@ -1604,6 +2079,18 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     gateSkipReason: options.gateSkipReason,
   });
   const prompt = buildPrompt({ plan, brain, soul, runId });
+  const emitEvent = createRunEventEmitter({
+    runId,
+    appendEvent,
+    root,
+    fs: deps.eventFs,
+    clock,
+    envSecrets: deps.envSecrets,
+    envPath: deps.envPath || join(root, '.env'),
+    envLoader: deps.envLoader,
+    scrubber: deps.scrubber,
+    io,
+  });
 
   if (options.json) {
     io.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -1635,10 +2122,32 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         runner: gateRunner,
         throwOnFailure: false,
       });
+      emitEvent({
+        type: RUN_EVENT_TYPES.GATE_RESULT,
+        command: plan.gate,
+        status: preflight.status ?? 0,
+      });
       if (preflight.status !== 0) {
         io.stderr.write(
           `[hermes] preflight gate "${plan.gate}" failed with exit code ${preflight.status}; aborting live workflow before model execution.\n`
         );
+        writePreparedLedgerBestEffort({
+          ledgerWriter,
+          record: {
+            runId,
+            startedAt,
+            plan,
+            preflight: { command: plan.gate, status: preflight.status, skipped: false },
+            model: null,
+            postflight: null,
+            availability,
+            exitCode: preflight.status,
+            completedAt: clock().toISOString(),
+          },
+          scrubOptions: ledgerScrubOptions,
+          io,
+          emitEvent,
+        });
         return preflight.status;
       }
     } else if (plan.gate && options.skipPreflightGate) {
@@ -1657,13 +2166,26 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         envPath: deps.envPath,
         envLoader: deps.envLoader,
         scrubber: deps.scrubber,
+        appendRunEvent: appendEvent,
+        runId,
+        root,
+        eventFs: deps.eventFs,
+        eventClock: clock,
+        io,
       });
     const record = await executeWorkflow(plan, {
       runStep,
       gateRunner,
       writeRunLedger: ledgerWriter,
+      writeRunCheckpoint:
+        deps.writeRunCheckpoint === undefined ? writeRunCheckpoint : deps.writeRunCheckpoint,
+      checkpointFs: deps.checkpointFs,
+      appendRunEvent: appendEvent,
+      eventFs: deps.eventFs,
       clock,
       runId,
+      root,
+      io,
       availability,
       envSecrets: deps.envSecrets,
       envPath: deps.envPath,
@@ -1675,7 +2197,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
 
   const ledger = {
     runId,
-    startedAt: clock().toISOString(),
+    startedAt,
     plan,
     preflight: null,
     model: null,
@@ -1687,13 +2209,13 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const finalizeLedger = (exitCode) => {
     ledger.exitCode = exitCode;
     ledger.completedAt = clock().toISOString();
-    if (!ledgerWriter) return;
-    try {
-      const prepared = prepareRunLedgerRecord(ledger, ledgerScrubOptions);
-      ledgerWriter(prepared, { envSecrets: [] });
-    } catch (error) {
-      io.stderr.write(`[hermes] WARNING: failed to write run ledger: ${error.message}\n`);
-    }
+    writePreparedLedgerBestEffort({
+      ledgerWriter,
+      record: ledger,
+      scrubOptions: ledgerScrubOptions,
+      io,
+      emitEvent,
+    });
   };
 
   const gates = getGateRunPlan(plan, options);
@@ -1703,6 +2225,11 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       env,
       runner: gateRunner,
       throwOnFailure: false,
+    });
+    emitEvent({
+      type: RUN_EVENT_TYPES.GATE_RESULT,
+      command: plan.gate,
+      status: preflight.status ?? 0,
     });
     ledger.preflight = { command: plan.gate, status: preflight.status, skipped: false };
     if (preflight.status !== 0) {
@@ -1721,7 +2248,19 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     );
   }
 
-  const code = await runModel(plan.model, prompt, routing, env);
+  const code = await runModel(plan.model, prompt, routing, env, {
+    appendRunEvent: appendEvent,
+    runId,
+    role: 'solo',
+    root,
+    eventFs: deps.eventFs,
+    eventClock: clock,
+    envSecrets: deps.envSecrets,
+    envPath: deps.envPath || join(root, '.env'),
+    envLoader: deps.envLoader,
+    scrubber: deps.scrubber,
+    io,
+  });
   ledger.model = { name: plan.model, exitCode: code };
 
   if (shouldRunPostflightGate(plan, code, gates)) {
@@ -1729,6 +2268,11 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       env,
       runner: gateRunner,
       throwOnFailure: false,
+    });
+    emitEvent({
+      type: RUN_EVENT_TYPES.GATE_RESULT,
+      command: plan.gate,
+      status: postflight.status ?? 0,
     });
     ledger.postflight = { command: plan.gate, status: postflight.status };
     if (postflight.status !== 0) {
@@ -1759,6 +2303,7 @@ if (isCliEntryPoint(import.meta.url, process.argv)) {
 
 export {
   Orchestrator,
+  appendRunEvent,
   assertFinancialGate,
   buildDoctorReport,
   buildPrompt,
