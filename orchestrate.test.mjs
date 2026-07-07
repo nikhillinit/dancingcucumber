@@ -105,6 +105,26 @@ function routingFixture() {
   };
 }
 
+function routingWithLadder({ enabled = true, rungs = ['claude', 'codex', 'kimi', 'agy'] } = {}) {
+  const routing = routingFixture();
+  routing.ladder = { enabled, rungs };
+  routing.commands = {
+    ...routing.commands,
+    kimi: {
+      binEnv: 'KIMI_CODE_BIN',
+      defaultBin: 'kimi-cli',
+      args: ['--print', '--input-format', 'text', '--final-message-only'],
+    },
+    agy: { binEnv: 'AGY_BIN', defaultBin: 'agy', args: [] },
+    gemini: {
+      binEnv: 'GEMINI_BIN',
+      defaultBin: 'gemini',
+      args: ['--output-format', 'text', '--yolo', '--prompt='],
+    },
+  };
+  return routing;
+}
+
 // Manual clock for tests and fakes. It never installs real timers or open handles.
 function createFakeClock(start = '2026-07-07T19:04:07.684Z') {
   let currentMs = typeof start === 'number' ? start : new Date(start).getTime();
@@ -443,6 +463,7 @@ describe('argument parsing and routing decisions', () => {
       workflowProvided: false,
       live: false,
       manualModel: null,
+      allowFallback: false,
       legacyCommand: null,
     });
 
@@ -460,6 +481,7 @@ describe('argument parsing and routing decisions', () => {
         '--skip-preflight-gate',
         '--skip-reason',
         'local fixture only',
+        '--allow-fallback',
         '--live',
       ]),
       {
@@ -474,6 +496,7 @@ describe('argument parsing and routing decisions', () => {
         workflowProvided: true,
         live: true,
         manualModel: 'codex',
+        allowFallback: true,
         legacyCommand: null,
       }
     );
@@ -594,6 +617,156 @@ describe('argument parsing and routing decisions', () => {
       ['owner', 'specialist', 'reviewer', 'gate']
     );
     assert.deepEqual(financial.gateSkip, { preflight: true, reason: 'unit-test fixture' });
+  });
+
+  test('plan-build ladder skips a missing first rung and annotates the selected step', () => {
+    const routing = routingWithLadder({ rungs: ['claude', 'codex'] });
+    const commandExists = recordCommandExists(['claude']);
+
+    const plan = createRoutingPlan({
+      phase: 'research',
+      task: 'plain docs update',
+      routing,
+      requestedWorkflow: 'solo',
+      commandExists,
+    });
+
+    const owner = plan.workflow.steps.find((step) => step.role === 'owner');
+    assert.equal(plan.requestedModel, 'claude');
+    assert.equal(plan.selectedModel, 'codex');
+    assert.equal(owner.requestedModel, 'claude');
+    assert.equal(owner.selectedModel, 'codex');
+    assert.equal(owner.model, 'codex');
+    assert.equal(owner.degradeReason, 'claude unavailable (command missing)');
+    assert.deepEqual(owner.providerDiagnostics, [
+      { provider: 'claude', status: 'skipped', detail: 'claude unavailable (command missing)' },
+    ]);
+  });
+
+  test('plan-build ladder records all-rungs failure through the main failure ledger', async () => {
+    const captured = captureIo();
+    const ledgers = [];
+    const routing = routingWithLadder({ rungs: ['claude', 'codex'] });
+    const code = await main(
+      ['--workflow', 'solo', '--live', '--phase', 'research', '--task', 'plain docs update'],
+      {},
+      captured.io,
+      {
+        routing,
+        brain: 'DEV_BRAIN fixture',
+        soul: 'SOUL fixture',
+        commandExists: recordCommandExists(['claude', 'codex']),
+        gateRunner() {
+          throw new Error('preflight gate should not run without a provider');
+        },
+        writeRunLedger(record) {
+          ledgers.push(record);
+        },
+        appendRunEvent: null,
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }
+    );
+
+    assert.equal(code, 1);
+    assert.equal(ledgers.length, 1);
+    assert.equal(ledgers[0].error, 'no available provider for role solo; tried: [claude, codex]');
+    assert.deepEqual(ledgers[0].failureLedger[0].tried, ['claude', 'codex']);
+    assert.deepEqual(
+      ledgers[0].providerDiagnostics.map((diagnostic) => diagnostic.status),
+      ['skipped', 'skipped']
+    );
+  });
+
+  test('plan-build ladder skips a cooling provider through the injected seam', () => {
+    const routing = routingWithLadder({ rungs: ['claude', 'codex'] });
+
+    const plan = createRoutingPlan({
+      phase: 'research',
+      task: 'plain docs update',
+      routing,
+      requestedWorkflow: 'solo',
+      commandExists: recordCommandExists(),
+      isCooling: (provider) => provider === 'claude',
+    });
+
+    const owner = plan.workflow.steps.find((step) => step.role === 'owner');
+    assert.equal(owner.model, 'codex');
+    assert.equal(owner.degradeReason, 'claude cooling');
+    assert.deepEqual(owner.providerDiagnostics, [
+      { provider: 'claude', status: 'skipped', detail: 'claude cooling' },
+    ]);
+  });
+
+  test('financial-risk lanes refuse plan-build degradation outside production', () => {
+    const routing = routingWithLadder({ rungs: ['claude', 'codex'] });
+    const commandExists = recordCommandExists(['claude']);
+
+    assert.throws(
+      () =>
+        createRoutingPlan({
+          phase: 'research',
+          task: 'backtest walk-forward sharpe review',
+          routing,
+          requestedWorkflow: 'solo',
+          commandExists,
+        }),
+      /refused to degrade under a financial-risk classification/
+    );
+    assert.deepEqual(commandExists.calls, ['claude']);
+  });
+
+  test('manual model pins do not degrade unless allow-fallback is explicit', () => {
+    const pinnedRouting = routingWithLadder({ rungs: ['claude', 'codex', 'kimi'] });
+    const pinnedCommandExists = recordCommandExists(['codex']);
+
+    assert.throws(
+      () =>
+        createRoutingPlan({
+          phase: 'research',
+          task: 'plain docs update',
+          routing: pinnedRouting,
+          manualModel: 'codex',
+          requestedWorkflow: 'solo',
+          commandExists: pinnedCommandExists,
+        }),
+      /manual provider codex unavailable \(command missing\); fallback disabled/
+    );
+    assert.deepEqual(pinnedCommandExists.calls, ['codex']);
+
+    const fallbackCommandExists = recordCommandExists(['codex']);
+    const fallbackPlan = createRoutingPlan({
+      phase: 'research',
+      task: 'plain docs update',
+      routing: routingWithLadder({ rungs: ['claude', 'codex', 'kimi'] }),
+      manualModel: 'codex',
+      allowFallback: true,
+      requestedWorkflow: 'solo',
+      commandExists: fallbackCommandExists,
+    });
+
+    assert.equal(fallbackPlan.model, 'kimi');
+    assert.equal(fallbackPlan.requestedModel, 'codex');
+    assert.equal(fallbackPlan.degradeReason, 'codex unavailable (command missing)');
+  });
+
+  test('ladder disabled leaves routing plan shape unchanged', () => {
+    const routing = routingWithLadder({ enabled: false, rungs: ['claude', 'codex'] });
+
+    const plan = createRoutingPlan({
+      phase: 'production',
+      task: 'add router tests',
+      routing,
+      requestedWorkflow: 'pair',
+      commandExists: recordCommandExists(['codex']),
+    });
+
+    assert.equal(plan.model, 'codex');
+    assert.equal('requestedModel' in plan, false);
+    assert.equal('providerDiagnostics' in plan.workflow.steps[0], false);
+    assert.deepEqual(
+      plan.workflow.steps.map((step) => step.model),
+      ['codex', 'claude', null]
+    );
   });
 });
 
@@ -1212,6 +1385,254 @@ describe('main dependency seams', () => {
     assert.equal(ledgers[0].steps[0].output, 'owner leaked [SCRUBBED:envvalue]');
     assert.equal(ledgers[0].steps[0].scrubCount, 1);
     assert.equal(ledgers[0].steps[1].scrubCount, 0);
+  });
+
+  test('dispatch fallback advances a non-write review step and emits a fallback event', async () => {
+    const ledgers = [];
+    const events = [];
+    const calls = [];
+    const routing = routingWithLadder({ rungs: ['claude', 'agy'] });
+    const plan = {
+      phase: 'research',
+      risk: 'standard',
+      gate: null,
+      ladder: routing.ladder,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          {
+            role: 'reviewer',
+            model: 'claude',
+            requestedModel: 'claude',
+            selectedModel: 'claude',
+            action: 'review',
+            providerDiagnostics: [],
+          },
+        ],
+      },
+    };
+
+    const record = await executeWorkflow(plan, {
+      routing,
+      commandExists: recordCommandExists(),
+      async runStep({ step }) {
+        calls.push(step.model);
+        if (step.model === 'claude') {
+          return { code: 7, failure: 'nonzero_exit', output: 'provider failed' };
+        }
+        return { code: 0, approved: true, output: 'approved\nAPPROVED' };
+      },
+      writeRunLedger(ledger) {
+        ledgers.push(ledger);
+      },
+      appendRunEvent(_runId, event) {
+        events.push(event);
+      },
+      checkpointFs: createRecordingFs(),
+      root: join('C:\\', 'tmp', 'hermes-test-root'),
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.deepEqual(calls, ['claude', 'agy']);
+    assert.equal(record.exitCode, 0);
+    assert.equal(record.steps[0].model, 'agy');
+    assert.equal(record.steps[0].weakenedControl, true);
+    assert.equal(record.steps[0].deviation, 'review-lane provider fallback weakened independence control');
+    assert.deepEqual(record.steps[0].providerDiagnostics, [
+      { provider: 'claude', status: 'failed', detail: 'claude failed (nonzero_exit)' },
+      { provider: 'agy', status: 'fallback', detail: 'advanced from claude after nonzero_exit' },
+    ]);
+    assert.deepEqual(
+      events.filter((event) => event.type === 'fallback'),
+      [
+        {
+          type: 'fallback',
+          role: 'reviewer',
+          from: 'claude',
+          to: 'agy',
+          failure: 'nonzero_exit',
+        },
+      ]
+    );
+    assert.equal(ledgers.length, 1);
+    assert.equal(ledgers[0].steps[0].providerDiagnostics[0].provider, 'claude');
+  });
+
+  test('write-capable provider failure does not dispatch the next rung', async () => {
+    const events = [];
+    const calls = [];
+    const routing = routingWithLadder({ rungs: ['codex', 'agy'] });
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      ladder: routing.ladder,
+      workflow: {
+        selected: 'solo',
+        steps: [
+          {
+            role: 'owner',
+            model: 'codex',
+            requestedModel: 'codex',
+            selectedModel: 'codex',
+            action: 'execute',
+            providerDiagnostics: [],
+          },
+        ],
+      },
+    };
+
+    const record = await executeWorkflow(plan, {
+      routing,
+      commandExists: recordCommandExists(),
+      async runStep({ step }) {
+        calls.push(step.model);
+        return { code: 9, failure: 'nonzero_exit', output: 'partial write may have happened' };
+      },
+      appendRunEvent(_runId, event) {
+        events.push(event);
+      },
+      checkpointFs: createRecordingFs(),
+      root: join('C:\\', 'tmp', 'hermes-test-root'),
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.deepEqual(calls, ['codex']);
+    assert.equal(record.exitCode, 9);
+    assert.equal(record.steps[0].model, 'codex');
+    assert.deepEqual(
+      record.steps[0].providerDiagnostics.map((diagnostic) => diagnostic.status),
+      ['failed', 'blocked']
+    );
+    assert.match(record.steps[0].providerDiagnostics[1].detail, /write-capable provider codex/);
+    assert.deepEqual(events.filter((event) => event.type === 'fallback'), []);
+    assert.equal(record.failureLedger[0].role, 'owner');
+  });
+
+  test('manual pin blocks dispatch fallback by default but allow-fallback advances', async () => {
+    const routing = routingWithLadder({ rungs: ['claude', 'agy'] });
+    const pinnedPlan = {
+      phase: 'research',
+      risk: 'standard',
+      gate: null,
+      ladder: routing.ladder,
+      manualPinned: true,
+      allowFallback: false,
+      workflow: {
+        selected: 'solo',
+        steps: [
+          {
+            role: 'owner',
+            model: 'claude',
+            requestedModel: 'claude',
+            selectedModel: 'claude',
+            manualPinned: true,
+            allowFallback: false,
+            action: 'execute',
+            providerDiagnostics: [],
+          },
+        ],
+      },
+    };
+    const pinnedCalls = [];
+    const pinned = await executeWorkflow(pinnedPlan, {
+      routing,
+      commandExists: recordCommandExists(),
+      async runStep({ step }) {
+        pinnedCalls.push(step.model);
+        return { code: 4, failure: 'nonzero_exit', output: 'failed' };
+      },
+      appendRunEvent: null,
+      checkpointFs: createRecordingFs(),
+      root: join('C:\\', 'tmp', 'hermes-test-root'),
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.deepEqual(pinnedCalls, ['claude']);
+    assert.equal(pinned.exitCode, 4);
+    assert.match(pinned.steps[0].providerDiagnostics[1].detail, /fallback disabled/);
+
+    const fallbackCalls = [];
+    const fallback = await executeWorkflow(
+      {
+        ...pinnedPlan,
+        allowFallback: true,
+        workflow: {
+          ...pinnedPlan.workflow,
+          steps: [
+            {
+              ...pinnedPlan.workflow.steps[0],
+              allowFallback: true,
+            },
+          ],
+        },
+      },
+      {
+        routing,
+        commandExists: recordCommandExists(),
+        async runStep({ step }) {
+          fallbackCalls.push(step.model);
+          if (step.model === 'claude') {
+            return { code: 4, failure: 'nonzero_exit', output: 'failed' };
+          }
+          return { code: 0, output: 'ok' };
+        },
+        appendRunEvent: null,
+        checkpointFs: createRecordingFs(),
+        root: join('C:\\', 'tmp', 'hermes-test-root'),
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }
+    );
+
+    assert.deepEqual(fallbackCalls, ['claude', 'agy']);
+    assert.equal(fallback.exitCode, 0);
+    assert.equal(fallback.steps[0].model, 'agy');
+  });
+
+  test('financial-risk dispatch refuses fallback outside production', async () => {
+    const calls = [];
+    const routing = routingWithLadder({ rungs: ['claude', 'agy'] });
+    const record = await executeWorkflow(
+      {
+        phase: 'research',
+        risk: 'financial',
+        gate: null,
+        ladder: routing.ladder,
+        workflow: {
+          selected: 'pair',
+          steps: [
+            {
+              role: 'specialist',
+              model: 'claude',
+              requestedModel: 'claude',
+              selectedModel: 'claude',
+              action: 'review financial risk',
+              providerDiagnostics: [],
+            },
+          ],
+        },
+      },
+      {
+        routing,
+        commandExists: recordCommandExists(),
+        async runStep({ step }) {
+          calls.push(step.model);
+          return { code: 8, failure: 'nonzero_exit', output: 'failed' };
+        },
+        appendRunEvent: null,
+        checkpointFs: createRecordingFs(),
+        root: join('C:\\', 'tmp', 'hermes-test-root'),
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }
+    );
+
+    assert.deepEqual(calls, ['claude']);
+    assert.equal(record.exitCode, 8);
+    assert.match(
+      record.steps[0].providerDiagnostics[1].detail,
+      /refused to degrade under a financial-risk classification/
+    );
+    assert.equal(record.failureLedger[0].role, 'specialist');
   });
 
   test('live workflow appends compact step and gate events without output bodies', async () => {

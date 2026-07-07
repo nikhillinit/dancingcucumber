@@ -90,6 +90,19 @@ const DEFAULT_DEBATE = {
   comparators: ['claude', 'codex', 'kimi'],
   synthesis: 'claude',
 };
+const REVIEW_FALLBACK_ROLES = new Set(['reviewer', 'comparator', 'synthesis', 'redteam', 'blind']);
+
+class ProviderResolutionError extends Error {
+  constructor(message, { role, providerDiagnostics = [], failureLedger = [], tried = [] } = {}) {
+    super(message);
+    this.name = 'ProviderResolutionError';
+    this.providerResolution = true;
+    this.role = role;
+    this.providerDiagnostics = providerDiagnostics;
+    this.failureLedger = failureLedger;
+    this.tried = tried;
+  }
+}
 
 function normalizeEnvSecrets(values = []) {
   const unique = new Set();
@@ -395,6 +408,7 @@ function parseArgs(argv = []) {
     workflowProvided: false,
     live: false,
     manualModel: null,
+    allowFallback: false,
     legacyCommand: null,
   };
 
@@ -414,6 +428,8 @@ function parseArgs(argv = []) {
       options.json = true;
     } else if (arg === '--live') {
       options.live = true;
+    } else if (arg === '--allow-fallback') {
+      options.allowFallback = true;
     } else if (arg === '--skip-gates') {
       throw new Error('Use --skip-preflight-gate with --skip-reason instead of --skip-gates.');
     } else if (arg === '--skip-preflight-gate') {
@@ -552,6 +568,241 @@ function chooseModel(task, phase, routing, manualModel = null) {
   }
 
   return routing.defaults?.[phase] || 'claude';
+}
+
+function ladderEnabled(routing = {}) {
+  return routing?.ladder?.enabled === true;
+}
+
+function configuredLadderRungs(routing = {}) {
+  return Array.isArray(routing?.ladder?.rungs) ? routing.ladder.rungs.map(String) : [];
+}
+
+function commandBinForProvider(provider, routing = {}, env = process.env) {
+  const commandConfig = routing.commands?.[provider] || null;
+  if (!commandConfig) return { commandConfig: null, bin: null };
+  const bin = env?.[commandConfig.binEnv] || commandConfig.defaultBin || provider;
+  return { commandConfig, bin };
+}
+
+function providerStatus({
+  provider,
+  routing,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
+}) {
+  const { commandConfig, bin } = commandBinForProvider(provider, routing, env);
+  if (!commandConfig || !bin || !checkCommandExists(bin)) {
+    return { available: false, reason: 'command missing', bin, commandConfig };
+  }
+  if (isCooling(provider)) {
+    return { available: false, reason: 'cooling', bin, commandConfig };
+  }
+  return { available: true, reason: null, bin, commandConfig };
+}
+
+function noAvailableProviderMessage(role, tried) {
+  return `no available provider for role ${role}; tried: [${tried.join(', ')}]`;
+}
+
+function financialNoDegradeMessage(role, provider, reason) {
+  return `provider ${provider} ${reason}; role ${role} refused to degrade under a financial-risk classification`;
+}
+
+function createProviderFailureLedger({ role, message, tried, providerDiagnostics }) {
+  return [
+    {
+      role,
+      message,
+      tried,
+      providerDiagnostics,
+    },
+  ];
+}
+
+function resolveLadderRungsFrom({
+  requestedModel,
+  rungs,
+  manualPinned = false,
+  allowFallback = false,
+}) {
+  if (manualPinned && allowFallback) {
+    const requestedIndex = rungs.indexOf(requestedModel);
+    if (requestedIndex >= 0) {
+      return rungs.slice(requestedIndex);
+    }
+    return [requestedModel, ...rungs];
+  }
+  return rungs;
+}
+
+function resolveLadderProvider({
+  role,
+  requestedModel,
+  routing,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
+  risk = 'standard',
+  manualPinned = false,
+  allowFallback = false,
+}) {
+  if (!ladderEnabled(routing)) {
+    return { enabled: false, selectedModel: requestedModel };
+  }
+
+  const rungs = configuredLadderRungs(routing);
+  const candidateRungs = resolveLadderRungsFrom({
+    requestedModel,
+    rungs,
+    manualPinned,
+    allowFallback,
+  });
+  const noDegrade = risk === 'financial' || (manualPinned && !allowFallback);
+
+  if (noDegrade) {
+    const status = providerStatus({
+      provider: requestedModel,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+    if (status.available) {
+      return {
+        enabled: true,
+        requestedModel,
+        selectedModel: requestedModel,
+        degradeReason: null,
+        providerDiagnostics: [],
+      };
+    }
+
+    const detail =
+      risk === 'financial'
+        ? financialNoDegradeMessage(role, requestedModel, status.reason)
+        : `manual provider ${requestedModel} unavailable (${status.reason}); fallback disabled`;
+    const providerDiagnostics = [{ provider: requestedModel, status: 'failed', detail }];
+    throw new ProviderResolutionError(detail, {
+      role,
+      providerDiagnostics,
+      failureLedger: createProviderFailureLedger({
+        role,
+        message: detail,
+        tried: [requestedModel],
+        providerDiagnostics,
+      }),
+      tried: [requestedModel],
+    });
+  }
+
+  const providerDiagnostics = [];
+  for (const provider of candidateRungs) {
+    const status = providerStatus({
+      provider,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+    if (status.available) {
+      const requestedDiagnostic = providerDiagnostics.find(
+        (diagnostic) => diagnostic.provider === requestedModel
+      );
+      return {
+        enabled: true,
+        requestedModel,
+        selectedModel: provider,
+        degradeReason:
+          provider === requestedModel
+            ? null
+            : requestedDiagnostic?.detail || `${requestedModel} degraded to ${provider} by ladder`,
+        providerDiagnostics,
+      };
+    }
+    const detail =
+      status.reason === 'cooling'
+        ? `${provider} cooling`
+        : `${provider} unavailable (${status.reason})`;
+    providerDiagnostics.push({ provider, status: 'skipped', detail });
+  }
+
+  const message = noAvailableProviderMessage(role, candidateRungs);
+  throw new ProviderResolutionError(message, {
+    role,
+    providerDiagnostics,
+    failureLedger: createProviderFailureLedger({
+      role,
+      message,
+      tried: candidateRungs,
+      providerDiagnostics,
+    }),
+    tried: candidateRungs,
+  });
+}
+
+function applyLadderToStep(step, options) {
+  if (!step.model || !ladderEnabled(options.routing)) return step;
+
+  const requestedModel = step.model;
+  const resolved = resolveLadderProvider({
+    ...options,
+    role: step.role,
+    requestedModel,
+  });
+  const degradedReviewLane = resolved.degradeReason && REVIEW_FALLBACK_ROLES.has(step.role);
+  return {
+    ...step,
+    requestedModel,
+    selectedModel: resolved.selectedModel,
+    model: resolved.selectedModel,
+    degradeReason: resolved.degradeReason,
+    providerDiagnostics: resolved.providerDiagnostics,
+    manualPinned: options.manualPinned,
+    allowFallback: options.allowFallback,
+    ...(degradedReviewLane
+      ? {
+          weakenedControl: true,
+          deviation: 'review-lane provider fallback weakened independence control',
+        }
+      : {}),
+  };
+}
+
+function applyLadderToPlan(plan, options) {
+  if (!ladderEnabled(options.routing)) return plan;
+
+  const ladder = {
+    enabled: true,
+    rungs: configuredLadderRungs(options.routing),
+  };
+  const next = {
+    ...plan,
+    ladder,
+    allowFallback: options.allowFallback,
+    manualPinned: options.manualPinned,
+  };
+
+  const resolvedPlanModel = resolveLadderProvider({
+    ...options,
+    role: 'solo',
+    requestedModel: plan.model,
+  });
+  next.requestedModel = plan.model;
+  next.selectedModel = resolvedPlanModel.selectedModel;
+  next.model = resolvedPlanModel.selectedModel;
+  next.degradeReason = resolvedPlanModel.degradeReason;
+  next.providerDiagnostics = resolvedPlanModel.providerDiagnostics;
+
+  if (next.workflow?.steps) {
+    next.workflow = {
+      ...next.workflow,
+      steps: next.workflow.steps.map((step) => applyLadderToStep(step, options)),
+    };
+  }
+
+  return next;
 }
 
 function resolveGate(phase, specialist, gates = {}) {
@@ -697,9 +948,13 @@ function createRoutingPlan({
   task,
   routing,
   manualModel = null,
+  allowFallback = false,
   requestedWorkflow = null,
   skipPreflightGate = false,
   gateSkipReason = null,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
 }) {
   const specialist = scoreSpecialist(task, routing.specialists || {}, routing.scoring || {});
   const model = chooseModel(task, phase, routing, manualModel);
@@ -743,7 +998,15 @@ function createRoutingPlan({
     };
   }
 
-  return plan;
+  return applyLadderToPlan(plan, {
+    routing,
+    env,
+    commandExists: checkCommandExists,
+    isCooling,
+    risk,
+    manualPinned: Boolean(manualModel),
+    allowFallback,
+  });
 }
 
 function buildPrompt({ plan, brain, soul = '', runId = null }) {
@@ -823,6 +1086,12 @@ function commandExists(bin) {
   const checker = process.platform === 'win32' ? 'where.exe' : 'which';
   const result = spawnSync(checker, [bin], { stdio: 'ignore' });
   return result.status === 0;
+}
+
+// Write capability is derived from the existing CLI args only; no new config
+// semantics are introduced for W4.
+function isWriteCapableCommand(commandConfig) {
+  return (commandConfig?.args || []).some((arg) => arg === 'workspace-write' || arg === '--yolo');
 }
 
 function findDoctorCommandConfig(routing, provider) {
@@ -1209,6 +1478,7 @@ async function executeModelCommand(
     envLoader,
     scrubber = scrubSecrets,
     io = process,
+    commandExists: checkCommandExists = commandExists,
   } = {}
 ) {
   const commandConfig = routing.commands?.[model];
@@ -1217,7 +1487,7 @@ async function executeModelCommand(
   }
 
   const bin = env[commandConfig.binEnv] || commandConfig.defaultBin;
-  if (!commandExists(bin)) {
+  if (!checkCommandExists(bin)) {
     throw new Error(
       `Command not found for model "${model}": ${bin}. Set ${commandConfig.binEnv} or install the CLI.`
     );
@@ -1289,6 +1559,137 @@ function executeModel(model, prompt, routing, env = process.env, seams = {}) {
   }).then((result) => result.code);
 }
 
+async function executeSoloModelWithFallback({
+  plan,
+  prompt,
+  routing,
+  env = process.env,
+  seams = {},
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
+  io = process,
+}) {
+  const providerDiagnostics = [...(plan.providerDiagnostics || [])];
+  const attemptedProviders = new Set();
+  const emitEvent = createRunEventEmitter({
+    runId: seams.runId,
+    appendEvent: seams.appendRunEvent,
+    root: seams.root || ROOT,
+    fs: seams.eventFs,
+    clock: seams.eventClock || (() => new Date()),
+    envSecrets: seams.envSecrets,
+    envPath: seams.envPath,
+    envLoader: seams.envLoader,
+    scrubber: seams.scrubber,
+    io,
+  });
+  let currentModel = plan.model;
+
+  while (true) {
+    attemptedProviders.add(currentModel);
+    const result = await executeModelCommand(currentModel, prompt, routing, env, {
+      ...seams,
+      commandExists: checkCommandExists,
+      captureOutput: false,
+    });
+    if (!result.failure) {
+      return { code: result.code, model: currentModel, providerDiagnostics };
+    }
+
+    providerDiagnostics.push({
+      provider: currentModel,
+      status: 'failed',
+      detail: `${currentModel} failed (${result.failure})`,
+    });
+
+    if (plan.risk === 'financial') {
+      const detail = financialNoDegradeMessage('solo', currentModel, `failed (${result.failure})`);
+      providerDiagnostics.push({ provider: currentModel, status: 'blocked', detail });
+      return {
+        code: result.code || 1,
+        model: currentModel,
+        providerDiagnostics,
+        failureLedger: createProviderFailureLedger({
+          role: 'solo',
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    if (plan.manualPinned && !plan.allowFallback) {
+      const detail = `manual provider ${currentModel} failed (${result.failure}); fallback disabled`;
+      providerDiagnostics.push({ provider: currentModel, status: 'blocked', detail });
+      return {
+        code: result.code || 1,
+        model: currentModel,
+        providerDiagnostics,
+        failureLedger: createProviderFailureLedger({
+          role: 'solo',
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    if (isWriteCapableCommand(routing.commands?.[currentModel])) {
+      const detail = `write-capable provider ${currentModel} failed (${result.failure}); fallback disabled`;
+      providerDiagnostics.push({ provider: currentModel, status: 'blocked', detail });
+      return {
+        code: result.code || 1,
+        model: currentModel,
+        providerDiagnostics,
+        failureLedger: createProviderFailureLedger({
+          role: 'solo',
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    const next = findNextDispatchProvider({
+      currentModel,
+      attemptedProviders,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+    providerDiagnostics.push(...next.skippedDiagnostics);
+    if (!next.provider) {
+      const message = noAvailableProviderMessage('solo', next.tried);
+      return {
+        code: result.code || 1,
+        model: currentModel,
+        providerDiagnostics,
+        failureLedger: createProviderFailureLedger({
+          role: 'solo',
+          message,
+          tried: next.tried,
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    emitEvent({
+      type: RUN_EVENT_TYPES.FALLBACK,
+      role: 'solo',
+      from: currentModel,
+      to: next.provider,
+      failure: result.failure,
+    });
+    providerDiagnostics.push({
+      provider: next.provider,
+      status: 'fallback',
+      detail: `advanced from ${currentModel} after ${result.failure}`,
+    });
+    currentModel = next.provider;
+  }
+}
+
 // Sibling of executeModel that PIPES stdout so a step's output can be captured
 // and fed back into executeWorkflow. executeModel keeps inheriting stdout so the
 // non-workflow path keeps inheriting stdout.
@@ -1306,7 +1707,14 @@ async function executeModelCapture(
   if (result.failure === MODEL_FAILURE.SPAWN_ERROR && result.error) {
     throw result.error;
   }
-  return { code: result.code, output: result.output };
+  const captured = { code: result.code, output: result.output };
+  if (result.failure) {
+    Object.defineProperty(captured, 'failure', {
+      value: result.failure,
+      enumerable: false,
+    });
+  }
+  return captured;
 }
 
 const APPROVAL_SENTINEL = 'APPROVED';
@@ -1356,6 +1764,7 @@ function createLiveRunStep({
   envPath = join(root, '.env'),
   envLoader,
   scrubber = scrubSecrets,
+  commandExists: checkCommandExists = commandExists,
 } = {}) {
   const promptEnvSecrets = resolveEnvSecrets({ envSecrets, envLoader, envPath });
 
@@ -1404,6 +1813,7 @@ function createLiveRunStep({
       envPath,
       envLoader,
       scrubber,
+      commandExists: checkCommandExists,
     });
     const result = { code, output };
     if (step.role === 'reviewer') {
@@ -1612,6 +2022,218 @@ function defaultRunStep() {
   );
 }
 
+function classifyStepResult(result) {
+  if (result?.failure) return result.failure;
+  const code = result?.code ?? 0;
+  return code === 0 ? null : MODEL_FAILURE.NONZERO_EXIT;
+}
+
+function formatProviderSkipDetail(provider, reason) {
+  return reason === 'cooling' ? `${provider} cooling` : `${provider} unavailable (${reason})`;
+}
+
+function findNextDispatchProvider({
+  currentModel,
+  attemptedProviders,
+  routing,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
+}) {
+  const rungs = configuredLadderRungs(routing);
+  const start = rungs.indexOf(currentModel);
+  const candidates = start >= 0 ? rungs.slice(start + 1) : rungs.filter((rung) => rung !== currentModel);
+  const skippedDiagnostics = [];
+
+  for (const provider of candidates) {
+    if (attemptedProviders.has(provider)) continue;
+    const status = providerStatus({
+      provider,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+    if (status.available) {
+      return {
+        provider,
+        skippedDiagnostics,
+        tried: [currentModel, ...candidates],
+      };
+    }
+    skippedDiagnostics.push({
+      provider,
+      status: 'skipped',
+      detail: formatProviderSkipDetail(provider, status.reason),
+    });
+  }
+
+  return {
+    provider: null,
+    skippedDiagnostics,
+    tried: [currentModel, ...candidates],
+  };
+}
+
+function failedStepResult(result, message, failure) {
+  return {
+    ...result,
+    code: result?.code && result.code !== 0 ? result.code : 1,
+    output: result?.output || message,
+    failure,
+  };
+}
+
+async function runStepWithProviderFallback({
+  step,
+  input,
+  notes,
+  plan,
+  attempt,
+  runId,
+  runStep,
+  routing,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+  isCooling = () => false,
+  emitEvent = () => {},
+}) {
+  if (!ladderEnabled(routing) || !step.model) {
+    const result = await runStep({ step, input, notes, plan, attempt, runId });
+    return {
+      result,
+      step,
+      providerDiagnostics: step.providerDiagnostics || [],
+      weakenedControl: false,
+      failureLedger: [],
+    };
+  }
+
+  const providerDiagnostics = [...(step.providerDiagnostics || [])];
+  const attemptedProviders = new Set();
+  let currentStep = { ...step };
+  let weakenedControl = false;
+
+  while (true) {
+    attemptedProviders.add(currentStep.model);
+    const result = await runStep({ step: currentStep, input, notes, plan, attempt, runId });
+    const failure = classifyStepResult(result);
+    if (!failure) {
+      return {
+        result,
+        step: currentStep,
+        providerDiagnostics,
+        weakenedControl,
+        failureLedger: [],
+      };
+    }
+
+    const baseDetail = `${currentStep.model} failed (${failure})`;
+    providerDiagnostics.push({
+      provider: currentStep.model,
+      status: 'failed',
+      detail: baseDetail,
+    });
+
+    if (plan.risk === 'financial') {
+      const detail = financialNoDegradeMessage(step.role, currentStep.model, `failed (${failure})`);
+      providerDiagnostics.push({ provider: currentStep.model, status: 'blocked', detail });
+      return {
+        result: failedStepResult(result, detail, failure),
+        step: currentStep,
+        providerDiagnostics,
+        weakenedControl,
+        failureLedger: createProviderFailureLedger({
+          role: step.role,
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    if (currentStep.manualPinned && !currentStep.allowFallback) {
+      const detail = `manual provider ${currentStep.model} failed (${failure}); fallback disabled`;
+      providerDiagnostics.push({ provider: currentStep.model, status: 'blocked', detail });
+      return {
+        result: failedStepResult(result, detail, failure),
+        step: currentStep,
+        providerDiagnostics,
+        weakenedControl,
+        failureLedger: createProviderFailureLedger({
+          role: step.role,
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    const commandConfig = routing.commands?.[currentStep.model] || null;
+    if (isWriteCapableCommand(commandConfig)) {
+      const detail = `write-capable provider ${currentStep.model} failed (${failure}); fallback disabled`;
+      providerDiagnostics.push({ provider: currentStep.model, status: 'blocked', detail });
+      return {
+        result: failedStepResult(result, detail, failure),
+        step: currentStep,
+        providerDiagnostics,
+        weakenedControl,
+        failureLedger: createProviderFailureLedger({
+          role: step.role,
+          message: detail,
+          tried: [...attemptedProviders],
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    const next = findNextDispatchProvider({
+      currentModel: currentStep.model,
+      attemptedProviders,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+    providerDiagnostics.push(...next.skippedDiagnostics);
+    if (!next.provider) {
+      const message = noAvailableProviderMessage(step.role, next.tried);
+      return {
+        result: failedStepResult(result, message, failure),
+        step: currentStep,
+        providerDiagnostics,
+        weakenedControl,
+        failureLedger: createProviderFailureLedger({
+          role: step.role,
+          message,
+          tried: next.tried,
+          providerDiagnostics,
+        }),
+      };
+    }
+
+    emitEvent({
+      type: RUN_EVENT_TYPES.FALLBACK,
+      role: step.role,
+      from: currentStep.model,
+      to: next.provider,
+      failure,
+    });
+    providerDiagnostics.push({
+      provider: next.provider,
+      status: 'fallback',
+      detail: `advanced from ${currentStep.model} after ${failure}`,
+    });
+    weakenedControl = weakenedControl || REVIEW_FALLBACK_ROLES.has(step.role);
+    currentStep = {
+      ...currentStep,
+      model: next.provider,
+      selectedModel: next.provider,
+      degradeReason: `${currentStep.model} failed (${failure})`,
+    };
+  }
+}
+
 async function executeWorkflow(plan, deps = {}) {
   const workflow = plan.workflow;
   if (!workflow || !Array.isArray(workflow.steps)) {
@@ -1626,6 +2248,10 @@ async function executeWorkflow(plan, deps = {}) {
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
   const root = deps.root || ROOT;
+  const routing = deps.routing || { ladder: plan.ladder || { enabled: false }, commands: {} };
+  const env = deps.env || process.env;
+  const checkCommandExists = deps.commandExists || commandExists;
+  const isCooling = deps.isCooling || (() => false);
   const io = deps.io || process;
   const ledgerScrubOptions = {
     envSecrets: deps.envSecrets,
@@ -1659,9 +2285,9 @@ async function executeWorkflow(plan, deps = {}) {
   const availability =
     deps.availability ||
     buildProviderAvailability({
-      routing: deps.routing || {},
-      env: deps.env,
-      commandExists: deps.commandExists || commandExists,
+      routing,
+      env,
+      commandExists: checkCommandExists,
     });
 
   const stepByRole = (role) => workflow.steps.find((step) => step.role === role) || null;
@@ -1674,6 +2300,7 @@ async function executeWorkflow(plan, deps = {}) {
 
   let specialistNotes = null;
   const records = [];
+  const failureLedger = [];
   // First nonzero exit from ANY model step (owner, specialist, reviewer, audit,
   // comparator, synthesis). A crashed CLI must not be reported as success just
   // because the postflight gate passes.
@@ -1711,26 +2338,58 @@ async function executeWorkflow(plan, deps = {}) {
   const runRecorded = async (step, input, attempt) => {
     const startedAt = clock();
     emitEvent({ type: RUN_EVENT_TYPES.STEP_START, role: step.role, model: step.model });
-    const result = await runStep({ step, input, notes: specialistNotes, plan, attempt, runId });
+    const executed = await runStepWithProviderFallback({
+      step,
+      input,
+      notes: specialistNotes,
+      plan,
+      attempt,
+      runId,
+      runStep,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+      emitEvent,
+    });
+    const result = executed.result;
+    const finalStep = executed.step;
+    if (executed.failureLedger.length > 0) {
+      failureLedger.push(...executed.failureLedger);
+    }
     const endedAt = clock();
     const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
     const code = result.code ?? 0;
     if (stepFailureCode === 0 && code !== 0) {
       stepFailureCode = code;
     }
-    records.push({
+    const record = {
       role: step.role,
-      model: step.model,
+      model: finalStep.model,
       attempt,
       code,
       approved: result.approved ?? null,
       durationMs,
       output: result.output ?? '',
-    });
+    };
+    if (step.requestedModel || executed.providerDiagnostics.length > 0) {
+      record.requestedModel = step.requestedModel || step.model;
+      record.selectedModel = finalStep.selectedModel || finalStep.model;
+      record.degradeReason = finalStep.degradeReason ?? step.degradeReason ?? null;
+      record.providerDiagnostics = executed.providerDiagnostics;
+    }
+    if (executed.weakenedControl || finalStep.weakenedControl || step.weakenedControl) {
+      record.weakenedControl = true;
+      record.deviation =
+        finalStep.deviation ||
+        step.deviation ||
+        'review-lane provider fallback weakened independence control';
+    }
+    records.push(record);
     emitEvent({
       type: RUN_EVENT_TYPES.STEP_END,
       role: step.role,
-      model: step.model,
+      model: finalStep.model,
       code,
       durationMs,
     });
@@ -1820,6 +2479,9 @@ async function executeWorkflow(plan, deps = {}) {
       },
       exitCode,
     };
+    if (failureLedger.length > 0) {
+      record.failureLedger = failureLedger;
+    }
 
     writePreparedLedgerBestEffort({
       ledgerWriter,
@@ -1855,6 +2517,7 @@ Phases:
 Model overrides:
   --claude | --codex | --kimi
   --model <claude|codex|kimi>
+  --allow-fallback  Permit a manually pinned provider to use the configured fallback ladder.
 
 Output:
   --dry-run       Print the routing plan and prompt without model execution.
@@ -1974,6 +2637,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const root = deps.root || ROOT;
   const fsReader = deps.fs || { existsSync, readFileSync, readdirSync };
   const appendEvent = deps.appendRunEvent === undefined ? appendRunEvent : deps.appendRunEvent;
+  const checkCommandExists = deps.commandExists || commandExists;
+  const isCooling = deps.isCooling || (() => false);
   const ledgerScrubOptions = {
     envSecrets: deps.envSecrets,
     envPath: deps.envPath || join(root, '.env'),
@@ -2013,7 +2678,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         routing,
         env,
         providers: DOCTOR_PROVIDERS,
-        commandExists: deps.commandExists || commandExists,
+        commandExists: checkCommandExists,
       });
       const staleRuns = scanStaleRunLedgers({
         root,
@@ -2069,15 +2734,43 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     });
     throw error;
   }
-  const plan = createRoutingPlan({
-    phase: options.phase,
-    task: options.task,
-    routing,
-    manualModel: options.manualModel,
-    requestedWorkflow: options.workflowProvided ? options.workflow : null,
-    skipPreflightGate: options.skipPreflightGate,
-    gateSkipReason: options.gateSkipReason,
-  });
+  let plan;
+  try {
+    plan = createRoutingPlan({
+      phase: options.phase,
+      task: options.task,
+      routing,
+      manualModel: options.manualModel,
+      allowFallback: options.allowFallback,
+      requestedWorkflow: options.workflowProvided ? options.workflow : null,
+      skipPreflightGate: options.skipPreflightGate,
+      gateSkipReason: options.gateSkipReason,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+    });
+  } catch (error) {
+    if (!error.providerResolution) {
+      throw error;
+    }
+    writePreparedLedgerBestEffort({
+      ledgerWriter,
+      record: {
+        runId,
+        startedAt,
+        phase: options.phase,
+        task: options.task,
+        error: error.message,
+        providerDiagnostics: error.providerDiagnostics,
+        failureLedger: error.failureLedger,
+        exitCode: 1,
+        completedAt: clock().toISOString(),
+      },
+      scrubOptions: ledgerScrubOptions,
+      io,
+    });
+    return 1;
+  }
   const prompt = buildPrompt({ plan, brain, soul, runId });
   const emitEvent = createRunEventEmitter({
     runId,
@@ -2108,7 +2801,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const availability = buildProviderAvailability({
     routing,
     env,
-    commandExists: deps.commandExists || commandExists,
+    commandExists: checkCommandExists,
   });
 
   if (options.workflowProvided && liveExecution && plan.workflow) {
@@ -2172,6 +2865,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         eventFs: deps.eventFs,
         eventClock: clock,
         io,
+        commandExists: checkCommandExists,
       });
     const record = await executeWorkflow(plan, {
       runStep,
@@ -2187,6 +2881,10 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       root,
       io,
       availability,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
       envSecrets: deps.envSecrets,
       envPath: deps.envPath,
       envLoader: deps.envLoader,
@@ -2248,20 +2946,53 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     );
   }
 
-  const code = await runModel(plan.model, prompt, routing, env, {
-    appendRunEvent: appendEvent,
-    runId,
-    role: 'solo',
-    root,
-    eventFs: deps.eventFs,
-    eventClock: clock,
-    envSecrets: deps.envSecrets,
-    envPath: deps.envPath || join(root, '.env'),
-    envLoader: deps.envLoader,
-    scrubber: deps.scrubber,
-    io,
-  });
-  ledger.model = { name: plan.model, exitCode: code };
+  let modelResult;
+  if (ladderEnabled(routing)) {
+    modelResult = await executeSoloModelWithFallback({
+      plan,
+      prompt,
+      routing,
+      env,
+      commandExists: checkCommandExists,
+      isCooling,
+      io,
+      seams: {
+        appendRunEvent: appendEvent,
+        runId,
+        role: 'solo',
+        root,
+        eventFs: deps.eventFs,
+        eventClock: clock,
+        envSecrets: deps.envSecrets,
+        envPath: deps.envPath || join(root, '.env'),
+        envLoader: deps.envLoader,
+        scrubber: deps.scrubber,
+      },
+    });
+  } else {
+    const code = await runModel(plan.model, prompt, routing, env, {
+      appendRunEvent: appendEvent,
+      runId,
+      role: 'solo',
+      root,
+      eventFs: deps.eventFs,
+      eventClock: clock,
+      envSecrets: deps.envSecrets,
+      envPath: deps.envPath || join(root, '.env'),
+      envLoader: deps.envLoader,
+      scrubber: deps.scrubber,
+      io,
+    });
+    modelResult = { code, model: plan.model };
+  }
+  const code = modelResult.code;
+  ledger.model = { name: modelResult.model, exitCode: code };
+  if (modelResult.providerDiagnostics?.length > 0) {
+    ledger.model.providerDiagnostics = modelResult.providerDiagnostics;
+  }
+  if (modelResult.failureLedger?.length > 0) {
+    ledger.failureLedger = modelResult.failureLedger;
+  }
 
   if (shouldRunPostflightGate(plan, code, gates)) {
     const postflight = runGate(plan.gate, {

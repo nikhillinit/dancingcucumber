@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "ladder": { "enabled": false, "rungs": ["claude", "codex", "kimi", "agy"] },
   "defaults": { "research": "claude", "production": "codex", "distribution": "claude" },
   "ownership": {
     "research": {
@@ -100,10 +101,10 @@
     "distribution": "npm run lint"
   },
   "commands": {
-    "claude": { "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
-    "codex": { "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "workspace-write"], "timeoutMs": 1800000 },
-    "kimi": { "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"], "timeoutMs": 900000 },
-    "gemini": { "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="] },
-    "agy": { "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
+    "claude": { "family": "anthropic", "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
+    "codex": { "family": "openai", "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "workspace-write"], "timeoutMs": 1800000 },
+    "kimi": { "family": "moonshot", "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"], "timeoutMs": 900000 },
+    "gemini": { "family": "google", "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="] },
+    "agy": { "family": "google", "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
   }
 }
