@@ -42,6 +42,7 @@ LEGACY_PREREG_PATHS = {
     "apps/quant/advisor/research/READING_B_PREREG.md",
     "apps/quant/advisor/research/READING_C_PREREG.md",
     "apps/quant/advisor/research/CANDIDATE_PREREG.md",
+    "apps/quant/advisor/research/LS_REVERSAL_PREREG.md",
 }
 
 EXCLUDED_DIRS = {
