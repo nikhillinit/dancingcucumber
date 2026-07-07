@@ -457,9 +457,7 @@ function buildPrompt({ plan, brain, soul = '', runId = null }) {
     '7. Return: Summary, Affected Files, Changes or Plan, Verification, Risks.',
     '8. End with a compact Handoff block listing:',
     '   Run ID, Phase, Owner, Reviewer, Task, Protected areas, Files touched,',
-    '   Commands run, Gate status, Decision needed, Next action.',
-    '9. If writing a persisted handoff or checkpoint artifact, conform to',
-    '   .claude/schemas/handoff.schema.json.'
+    '   Commands run, Gate status, Decision needed, Next action.'
   );
 
   return lines.join('\n');
@@ -507,6 +505,19 @@ function buildDoctorReport({
       found: checkCommandExists(bin),
     };
   });
+}
+
+function buildProviderAvailability({
+  routing,
+  env = process.env,
+  commandExists: checkCommandExists = commandExists,
+}) {
+  return buildDoctorReport({
+    routing: routing || {},
+    env,
+    providers: Object.keys(routing?.commands || {}),
+    commandExists: checkCommandExists,
+  }).map(({ provider, bin, found }) => ({ provider, bin, found }));
 }
 
 function formatDoctorReport(report) {
@@ -789,6 +800,13 @@ async function executeWorkflow(plan, deps = {}) {
   const ledgerWriter = deps.writeRunLedger === undefined ? null : deps.writeRunLedger;
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
+  const availability =
+    deps.availability ||
+    buildProviderAvailability({
+      routing: deps.routing || {},
+      env: deps.env,
+      commandExists: deps.commandExists || commandExists,
+    });
 
   const stepByRole = (role) => workflow.steps.find((step) => step.role === role) || null;
   const ownerStep = stepByRole('owner');
@@ -888,6 +906,7 @@ async function executeWorkflow(plan, deps = {}) {
     approved,
     repairs,
     steps: records,
+    availability,
     gate: {
       command: gate.command ?? null,
       status: gate.status ?? 0,
@@ -1110,6 +1129,12 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     return 0;
   }
 
+  const availability = buildProviderAvailability({
+    routing,
+    env,
+    commandExists: deps.commandExists || commandExists,
+  });
+
   if (options.workflowProvided && liveExecution && plan.workflow) {
     // Preflight gate parity with the non-workflow path: a failing gate (e.g.
     // npm run check) must abort BEFORE spawning the owner/reviewer CLIs, unless
@@ -1140,6 +1165,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       writeRunLedger: ledgerWriter,
       clock,
       runId,
+      availability,
     });
     return record.exitCode;
   }
@@ -1151,6 +1177,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     preflight: null,
     model: null,
     postflight: null,
+    availability,
     exitCode: null,
   };
 
