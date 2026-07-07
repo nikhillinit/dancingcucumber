@@ -8,10 +8,12 @@ import * as router from './orchestrate.mjs';
 const {
   buildPrompt,
   chooseModel,
+  createLiveRunStep,
   createRoutingPlan,
   evaluateReadiness,
   executeModelCapture,
   executeModelCommand,
+  executeWorkflow,
   generateRunId,
   getGateRunPlan,
   isProductionFinancial,
@@ -656,7 +658,7 @@ describe('test fakes and DI seams', () => {
       plan: { phase: 'production' },
     };
 
-    const file = writeRunLedger(record, { root, fs });
+    const file = writeRunLedger(record, { root, fs, envSecrets: [] });
 
     assert.equal(file, join(root, 'ai-logs', 'hermes', 'runs', `${record.runId}.json`));
     assert.deepEqual(fs.calls[0], {
@@ -668,6 +670,119 @@ describe('test fakes and DI seams', () => {
     assert.equal(fs.calls[1].path, file);
     assert.deepEqual(JSON.parse(fs.files.get(file)), record);
     assert.equal(fs.files.get(file).endsWith('\n'), true);
+  });
+
+  test('writeRunLedger masks token, key-value, and injected env secret output bodies', () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const record = {
+      runId: 'hermes-2026-07-07T19-04-07-684Z',
+      workflow: 'pair',
+      steps: [
+        {
+          role: 'owner',
+          model: 'codex',
+          attempt: 0,
+          code: 0,
+          output:
+            'tokens sk-1234567890abcdef1234567890abcdef ghp_1234567890abcdef1234567890abcdef1234 AKIA1234567890ABCDEF',
+        },
+        {
+          role: 'reviewer',
+          model: 'claude',
+          attempt: 0,
+          code: 0,
+          approved: true,
+          output: 'API_KEY=raw-key-value\nplain env-secret-value-123',
+        },
+      ],
+      gate: { command: 'npm run check', status: 0, skipped: false },
+      exitCode: 0,
+    };
+
+    const file = writeRunLedger(record, {
+      root,
+      fs,
+      envSecrets: ['env-secret-value-123'],
+    });
+    const written = JSON.parse(fs.files.get(file));
+
+    assert.equal(
+      written.steps[0].output,
+      'tokens [SCRUBBED:token] [SCRUBBED:token] [SCRUBBED:token]'
+    );
+    assert.equal(written.steps[0].scrubCount, 3);
+    assert.equal(
+      written.steps[1].output,
+      'API_KEY=[SCRUBBED:keyvalue]\nplain [SCRUBBED:envvalue]'
+    );
+    assert.equal(written.steps[1].scrubCount, 2);
+    assert.equal(written.steps[1].role, 'reviewer');
+    assert.equal(written.gate.command, 'npm run check');
+  });
+
+  test('writeRunLedger fail-closes one throwing output body without dropping metadata', () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const record = {
+      runId: 'hermes-2026-07-07T19-04-07-684Z',
+      steps: [
+        {
+          role: 'owner',
+          model: 'codex',
+          attempt: 1,
+          code: 7,
+          output: 'secret-bearing output',
+        },
+      ],
+      availability: [{ provider: 'codex', bin: 'codex', found: true }],
+      gate: { command: 'npm run check', status: 7, skipped: false },
+      exitCode: 7,
+    };
+
+    const file = writeRunLedger(record, {
+      root,
+      fs,
+      envSecrets: [],
+      scrubber() {
+        throw new Error('scrubber failed');
+      },
+    });
+    const written = JSON.parse(fs.files.get(file));
+
+    assert.equal(written.steps[0].output, '[SCRUB-ERROR: output withheld]');
+    assert.equal(written.steps[0].scrubCount, 0);
+    assert.equal(written.steps[0].scrubError, true);
+    assert.equal(written.steps[0].role, 'owner');
+    assert.equal(written.steps[0].model, 'codex');
+    assert.equal(written.steps[0].code, 7);
+    assert.deepEqual(written.availability, [{ provider: 'codex', bin: 'codex', found: true }]);
+    assert.deepEqual(written.gate, { command: 'npm run check', status: 7, skipped: false });
+  });
+
+  test('large output and embedded token-like substrings scrub without overmatching', () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const embedded = 'prefixsk-1234567890abcdef1234567890abcdefsuffix';
+    const record = {
+      runId: 'hermes-2026-07-07T19-04-07-684Z',
+      steps: [
+        {
+          role: 'owner',
+          model: 'codex',
+          attempt: 0,
+          code: 0,
+          output: `${'x'.repeat(100000)}\n${embedded}\nTOKEN: large-secret-value-123`,
+        },
+      ],
+    };
+
+    const file = writeRunLedger(record, { root, fs, envSecrets: [] });
+    const written = JSON.parse(fs.files.get(file));
+
+    assert.match(written.steps[0].output, new RegExp(embedded));
+    assert.match(written.steps[0].output, /TOKEN: \[SCRUBBED:keyvalue\]/);
+    assert.equal(written.steps[0].scrubCount, 1);
   });
 
   test('scripted spawn captures prompt writes and stdout chunks for executeModelCapture', async () => {
@@ -943,6 +1058,66 @@ describe('main dependency seams', () => {
     ]);
     assert.deepEqual(commandExists.calls, ['claude', 'missing-codex']);
     assert.equal(ledgers[0].exitCode, 0);
+  });
+
+  test('createLiveRunStep scrubs prior output before composing the next prompt', async () => {
+    const prompts = [];
+    const runStep = createLiveRunStep({
+      routing: routingFixture(),
+      basePrompt: 'BASE PROMPT',
+      envSecrets: ['env-secret-value-123'],
+      executor(_model, prompt) {
+        prompts.push(prompt);
+        return { code: 0, output: 'looks good\nAPPROVED' };
+      },
+    });
+
+    const result = await runStep({
+      step: { role: 'reviewer', model: 'claude', action: 'review diff' },
+      input: 'prior sk-1234567890abcdef1234567890abcdef and env-secret-value-123',
+    });
+
+    assert.equal(result.approved, true);
+    assert.equal(prompts.length, 1);
+    assert.match(prompts[0], /PRIOR OUTPUT:\nprior \[SCRUBBED:token\] and \[SCRUBBED:envvalue\]/);
+    assert.doesNotMatch(prompts[0], /sk-1234567890abcdef1234567890abcdef/);
+    assert.doesNotMatch(prompts[0], /env-secret-value-123/);
+  });
+
+  test('executeWorkflow sends scrubbed step outputs to injected ledger writers', async () => {
+    const ledgers = [];
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          { role: 'owner', model: 'codex', action: 'execute' },
+          { role: 'reviewer', model: 'claude', action: 'review' },
+        ],
+      },
+    };
+
+    const record = await executeWorkflow(plan, {
+      envSecrets: ['env-secret-value-123'],
+      async runStep({ step }) {
+        if (step.role === 'owner') {
+          return { code: 0, output: 'owner leaked env-secret-value-123' };
+        }
+        return { code: 0, approved: true, output: 'reviewer approved' };
+      },
+      writeRunLedger(ledger) {
+        ledgers.push(ledger);
+      },
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.equal(record.steps[0].output, 'owner leaked env-secret-value-123');
+    assert.equal(ledgers.length, 1);
+    assert.equal(ledgers[0].steps[0].output, 'owner leaked [SCRUBBED:envvalue]');
+    assert.equal(ledgers[0].steps[0].scrubCount, 1);
+    assert.equal(ledgers[0].steps[1].scrubCount, 0);
   });
 });
 

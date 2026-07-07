@@ -44,11 +44,190 @@ const MODEL_ENV_BLOCKLIST = [
   'COHERE_API_KEY',
 ];
 const DEFAULT_RATE_LIMIT_SIGNATURES = [];
+const SCRUB_ERROR_TEXT = '[SCRUB-ERROR: output withheld]';
+const SCRUB_MARKER = Object.freeze({
+  token: '[SCRUBBED:token]',
+  keyvalue: '[SCRUBBED:keyvalue]',
+  envvalue: '[SCRUBBED:envvalue]',
+});
+const MIN_ENV_SECRET_LENGTH = 8;
+const OUTPUT_BODY_FIELDS = new Set(['output', 'stdout', 'stderr', 'body', 'text']);
+const KEY_VALUE_PATTERN =
+  /(^|[^A-Za-z0-9_.-])([A-Za-z0-9_.-]{1,80})(\s*[:=]\s*)([^\r\n]+)/g;
+const CREDENTIAL_KEY_PATTERN =
+  /(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH[_-]?TOKEN|SESSION[_-]?TOKEN|WEBHOOK[_-]?SECRET|SIGNING[_-]?KEY)/i;
+const TOKEN_PATTERNS = [
+  /(^|[^A-Za-z0-9_])(sk-[A-Za-z0-9_-]{16,})/g,
+  /(^|[^A-Za-z0-9_])(gh[opsur]_[A-Za-z0-9_]{20,})/g,
+  /(^|[^A-Za-z0-9_])(github_pat_[A-Za-z0-9_]{20,})/g,
+  /(^|[^A-Za-z0-9_])(AKIA[0-9A-Z]{16})/g,
+  /(^|[^A-Za-z0-9_])(xox[baprs]-[A-Za-z0-9-]{10,})/g,
+];
+const BEARER_TOKEN_PATTERN = /\b((?:Bearer|Token)\s+)([A-Za-z0-9._~+/=-]{32,})/gi;
 
 const DEFAULT_DEBATE = {
   comparators: ['claude', 'codex', 'kimi'],
   synthesis: 'claude',
 };
+
+function normalizeEnvSecrets(values = []) {
+  const unique = new Set();
+  for (const value of values || []) {
+    const text = String(value ?? '').trim();
+    if (text.length >= MIN_ENV_SECRET_LENGTH) {
+      unique.add(text);
+    }
+  }
+  return [...unique].sort((left, right) => right.length - left.length);
+}
+
+function stripEnvQuotes(value) {
+  const text = String(value || '').trim();
+  if (text.length >= 2) {
+    const first = text[0];
+    const last = text[text.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return text.slice(1, -1);
+    }
+  }
+  return text;
+}
+
+function parseEnvSecretValues(contents) {
+  const values = [];
+  for (const rawLine of String(contents || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const withoutExport = line.startsWith('export ') ? line.slice('export '.length).trim() : line;
+    const separator = withoutExport.indexOf('=');
+    if (separator <= 0) continue;
+
+    const value = stripEnvQuotes(withoutExport.slice(separator + 1));
+    values.push(value);
+  }
+  return normalizeEnvSecrets(values);
+}
+
+function loadEnvSecretValues({
+  envPath = join(ROOT, '.env'),
+  fs = { existsSync, readFileSync },
+} = {}) {
+  try {
+    if (!fs.existsSync(envPath)) return [];
+    return parseEnvSecretValues(fs.readFileSync(envPath, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function resolveEnvSecrets({ envSecrets, envLoader, envPath } = {}) {
+  if (Array.isArray(envSecrets)) return normalizeEnvSecrets(envSecrets);
+  if (typeof envLoader === 'function') {
+    try {
+      return normalizeEnvSecrets(envLoader({ envPath }) || []);
+    } catch {
+      return [];
+    }
+  }
+  return loadEnvSecretValues({ envPath });
+}
+
+function scrubSecrets(text, { envSecrets = [] } = {}) {
+  let scrubbedText = String(text ?? '');
+  let count = 0;
+
+  scrubbedText = scrubbedText.replace(KEY_VALUE_PATTERN, (match, prefix, key, separator, value) => {
+    if (!CREDENTIAL_KEY_PATTERN.test(key) || String(value).trim() === '') {
+      return match;
+    }
+    count += 1;
+    return `${prefix}${key}${separator}${SCRUB_MARKER.keyvalue}`;
+  });
+
+  for (const pattern of TOKEN_PATTERNS) {
+    scrubbedText = scrubbedText.replace(pattern, (_match, prefix) => {
+      count += 1;
+      return `${prefix}${SCRUB_MARKER.token}`;
+    });
+  }
+
+  scrubbedText = scrubbedText.replace(BEARER_TOKEN_PATTERN, (_match, prefix) => {
+    count += 1;
+    return `${prefix}${SCRUB_MARKER.token}`;
+  });
+
+  for (const secret of normalizeEnvSecrets(envSecrets)) {
+    const parts = scrubbedText.split(secret);
+    if (parts.length === 1) continue;
+    count += parts.length - 1;
+    scrubbedText = parts.join(SCRUB_MARKER.envvalue);
+  }
+
+  return { text: scrubbedText, count };
+}
+
+function scrubOutputBody(text, { scrubber = scrubSecrets, envSecrets = [] } = {}) {
+  try {
+    const result = scrubber(String(text ?? ''), { envSecrets });
+    return {
+      text: String(result?.text ?? ''),
+      count: Number.isInteger(result?.count) ? result.count : 0,
+      error: false,
+    };
+  } catch {
+    return { text: SCRUB_ERROR_TEXT, count: 0, error: true };
+  }
+}
+
+function scrubOutputFields(container, { scrubber, envSecrets }) {
+  let count = 0;
+  let error = false;
+  if (!container || typeof container !== 'object') {
+    return { count, error };
+  }
+
+  for (const [key, value] of Object.entries(container)) {
+    if (OUTPUT_BODY_FIELDS.has(key) && typeof value === 'string') {
+      const scrubbed = scrubOutputBody(value, { scrubber, envSecrets });
+      container[key] = scrubbed.text;
+      count += scrubbed.count;
+      error = error || scrubbed.error;
+    } else if (value && typeof value === 'object') {
+      const nested = scrubOutputFields(value, { scrubber, envSecrets });
+      count += nested.count;
+      error = error || nested.error;
+    }
+  }
+
+  return { count, error };
+}
+
+function prepareRunLedgerRecord(record, options = {}) {
+  const prepared = JSON.parse(JSON.stringify(record));
+  const envSecrets = resolveEnvSecrets(options);
+  const scrubber = options.scrubber || scrubSecrets;
+
+  if (Array.isArray(prepared.steps)) {
+    for (const step of prepared.steps) {
+      if (!step || typeof step !== 'object') continue;
+      const priorCount = Number.isInteger(step.scrubCount) ? step.scrubCount : 0;
+      const scrubbed = scrubOutputFields(step, { scrubber, envSecrets });
+      step.scrubCount = priorCount + scrubbed.count;
+      if (scrubbed.error || step.scrubError) {
+        step.scrubError = true;
+      }
+    }
+  }
+
+  for (const field of ['model', 'preflight', 'postflight', 'gate']) {
+    if (prepared[field] && typeof prepared[field] === 'object') {
+      scrubOutputFields(prepared[field], { scrubber, envSecrets });
+    }
+  }
+
+  return prepared;
+}
 
 function normalizeEntrypointPath(value) {
   return String(value || '')
@@ -924,7 +1103,13 @@ function createLiveRunStep({
   basePrompt = '',
   env = process.env,
   executor = executeModelCapture,
+  envSecrets,
+  envPath = join(ROOT, '.env'),
+  envLoader,
+  scrubber = scrubSecrets,
 } = {}) {
+  const promptEnvSecrets = resolveEnvSecrets({ envSecrets, envLoader, envPath });
+
   return async function liveRunStep({ step, input, notes }) {
     const sections = [
       basePrompt,
@@ -938,7 +1123,11 @@ function createLiveRunStep({
     }
     const formattedInput = formatStepInput(input);
     if (formattedInput) {
-      sections.push('', 'PRIOR OUTPUT:', formattedInput);
+      const scrubbedInput = scrubOutputBody(formattedInput, {
+        scrubber,
+        envSecrets: promptEnvSecrets,
+      }).text;
+      sections.push('', 'PRIOR OUTPUT:', scrubbedInput);
     }
     if (step.role === 'reviewer') {
       sections.push(
@@ -995,11 +1184,22 @@ function generateRunId(now = new Date()) {
   return `hermes-${iso}`;
 }
 
-function writeRunLedger(record, { root = ROOT, fs = { mkdirSync, writeFileSync } } = {}) {
+function writeRunLedger(
+  record,
+  {
+    root = ROOT,
+    fs = { mkdirSync, writeFileSync },
+    envSecrets,
+    envPath = join(root, '.env'),
+    envLoader,
+    scrubber = scrubSecrets,
+  } = {}
+) {
   const dir = join(root, 'ai-logs', 'hermes', 'runs');
   fs.mkdirSync(dir, { recursive: true });
   const file = join(dir, `${record.runId}.json`);
-  fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  const prepared = prepareRunLedgerRecord(record, { envSecrets, envPath, envLoader, scrubber });
+  fs.writeFileSync(file, `${JSON.stringify(prepared, null, 2)}\n`);
   return file;
 }
 
@@ -1076,6 +1276,12 @@ async function executeWorkflow(plan, deps = {}) {
   const ledgerWriter = deps.writeRunLedger === undefined ? null : deps.writeRunLedger;
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
+  const ledgerScrubOptions = {
+    envSecrets: deps.envSecrets,
+    envPath: deps.envPath,
+    envLoader: deps.envLoader,
+    scrubber: deps.scrubber,
+  };
   const availability =
     deps.availability ||
     buildProviderAvailability({
@@ -1193,7 +1399,8 @@ async function executeWorkflow(plan, deps = {}) {
 
   if (ledgerWriter) {
     try {
-      ledgerWriter(record);
+      const prepared = prepareRunLedgerRecord(record, ledgerScrubOptions);
+      ledgerWriter(prepared, { envSecrets: [] });
     } catch {
       // ledger persistence is best-effort; the execution result is still returned
     }
@@ -1335,6 +1542,12 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const gateRunner = deps.gateRunner || spawnSync;
   const ledgerWriter = deps.writeRunLedger === undefined ? writeRunLedger : deps.writeRunLedger;
   const clock = deps.clock || (() => new Date());
+  const ledgerScrubOptions = {
+    envSecrets: deps.envSecrets,
+    envPath: deps.envPath,
+    envLoader: deps.envLoader,
+    scrubber: deps.scrubber,
+  };
 
   if (options.help) {
     printHelp(io.stdout);
@@ -1434,7 +1647,17 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       );
     }
 
-    const runStep = deps.runStep || createLiveRunStep({ routing, basePrompt: prompt, env });
+    const runStep =
+      deps.runStep ||
+      createLiveRunStep({
+        routing,
+        basePrompt: prompt,
+        env,
+        envSecrets: deps.envSecrets,
+        envPath: deps.envPath,
+        envLoader: deps.envLoader,
+        scrubber: deps.scrubber,
+      });
     const record = await executeWorkflow(plan, {
       runStep,
       gateRunner,
@@ -1442,6 +1665,10 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       clock,
       runId,
       availability,
+      envSecrets: deps.envSecrets,
+      envPath: deps.envPath,
+      envLoader: deps.envLoader,
+      scrubber: deps.scrubber,
     });
     return record.exitCode;
   }
@@ -1462,7 +1689,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
     ledger.completedAt = clock().toISOString();
     if (!ledgerWriter) return;
     try {
-      ledgerWriter(ledger);
+      const prepared = prepareRunLedgerRecord(ledger, ledgerScrubOptions);
+      ledgerWriter(prepared, { envSecrets: [] });
     } catch (error) {
       io.stderr.write(`[hermes] WARNING: failed to write run ledger: ${error.message}\n`);
     }
