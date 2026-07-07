@@ -20,14 +20,14 @@ Deferred work with context. Added by /plan-ceo-review 2026-07-06 (skill_weight s
 - **Context:** Rejection error message in `apps/quant/advisor/diagnostics/portfolio.py` already names constant-mix as the reason; plan doc `docs/superpowers/plans/2026-07-06-decision2-diagnostics-cli.md` pins it as a TODO candidate, not v1.
 - **Depends on / blocked by:** Decision-2 lane surviving its +60-day kill criterion (no point widening a tool nobody runs).
 
-## P3 — Long/short book diagnostics (M) — GATED ON DECISION 5
+## P3 — Long/short book diagnostics (M) — GATED ON L/S GATE-1 PASS
 
 - **What:** Accept negative qty in `advisor.diagnostics` and report L/S-aware risk: gross/net exposure, long and short sleeves separately, drawdown on the combined book; concentration computed on absolute weights.
 - **Why:** v1 rejects shorts outright (long-flat only). If Decision 5 (program-review memo) ever opens a long-short lane — the reversed +0.32..+0.41 in-sample IRs from the residual screen are a pre-registered L/S *hypothesis* — the operator's real book could carry shorts and v1 would refuse it.
 - **Pros:** Removes the hard rejection for a real book shape; sleeves-separated reporting is strictly more informative.
 - **Cons:** Sharpe/Sortino/LCB semantics get subtler with negative weights (weights_book normalization, cash treatment for short proceeds); easy to produce plausible-but-wrong numbers; meaningful only if a short book ever exists.
 - **Context:** Shorts-rejection lives in `apps/quant/advisor/diagnostics/portfolio.py` (non-positive-qty guard). L/S research direction documented in the blend-futility memory and program-review memo §Decision 5.
-- **Depends on / blocked by:** **Decision 5 being picked by the operator** (not picked as of 2026-07-06); do not build speculatively.
+- **Depends on \ blocked by:** **Decision 5 PICKED by the operator 2026-07-06** (L/S reversal lane opened — docs/superpowers/plans/2026-07-06-decision5-ls-reversal-gate1.md); now gated on **Gate-1 PASS** — build inside the Gate-2 slice, still not speculatively.
 
 ## P3 — Broker-export ingestion for positions.csv (S)
 

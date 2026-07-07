@@ -67,3 +67,39 @@ def test_pass_needs_two_of_three_at_tau():
     one = {"value": _family(-0.41, 0.35), "fundamental_value": _family(-0.32, 0.10),
            "lazy_prices": _family(-0.40, 0.10)}
     assert decide(one, DEFAULT_LS_REVERSAL)["verdict"] == "CLOSED"
+
+
+def test_readings_wiring_builds_without_running_any_sweep():
+    from advisor.backtest.ls_reversal_screen import _readings
+    r = _readings(DEFAULT_LS_REVERSAL)
+    assert set(r) == set(DEFAULT_LS_REVERSAL.families)
+    for family, (panel, fam_cfg, raw_fn) in r.items():
+        assert "SPY" in panel.columns
+        assert callable(raw_fn)
+
+
+def test_one_shot_lock(tmp_path):
+    import json
+    from advisor.backtest.ls_reversal_screen import enforce_one_shot
+    rp = tmp_path / "result.json"
+    enforce_one_shot(rp, None)                       # no prior result: allowed
+    for locked in ("PASS", "CLOSED"):
+        rp.write_text(json.dumps({"verdict": locked}))
+        with pytest.raises(SystemExit):
+            enforce_one_shot(rp, None)               # locked forever...
+        with pytest.raises(SystemExit):
+            enforce_one_shot(rp, "any reason")       # ...even with a reason
+    rp.write_text(json.dumps({"verdict": "ABORT"}))
+    with pytest.raises(SystemExit):
+        enforce_one_shot(rp, None)                   # ABORT without reason: refused
+    enforce_one_shot(rp, "fixed fixture path typo")  # ABORT + reason: allowed
+
+
+def test_record_result_writes_reason(tmp_path):
+    import json
+    from advisor.backtest.ls_reversal_screen import record_result
+    rp = tmp_path / "result.json"
+    record_result(rp, {"verdict": "ABORT"}, None)
+    assert json.loads(rp.read_text())["rerun_after_abort_reason"] is None
+    record_result(rp, {"verdict": "CLOSED"}, "fixed fixture path typo")
+    assert json.loads(rp.read_text())["rerun_after_abort_reason"] == "fixed fixture path typo"
