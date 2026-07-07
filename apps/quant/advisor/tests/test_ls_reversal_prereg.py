@@ -45,3 +45,9 @@ def test_run_hash_binds_panel_and_each_fixture_independently(tmp_path):
 def test_dataclass_is_frozen():
     with pytest.raises(Exception):
         DEFAULT_LS_REVERSAL.tau_ls = 0.0
+
+
+def test_pinned_hash_matches_md():
+    from pathlib import Path
+    md = Path("apps/quant/advisor/research/LS_REVERSAL_PREREG.md").read_text(encoding="utf-8")
+    assert ls_reversal_hash(DEFAULT_LS_REVERSAL) in md
