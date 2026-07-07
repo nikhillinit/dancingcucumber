@@ -1,0 +1,27 @@
+{
+  "methodology_hash": "3784b0998303861f8392f308324d789c032bbd64c0f56f20a3ddaaa3c2394c6b",
+  "run_hash": "e2e5045cf5432c5fec91bfc98d5e23f7b482fb27c2c29e2923c87e4ab9b01d93",
+  "verdict": "CLOSED",
+  "survivors": [
+    "lazy_prices"
+  ],
+  "families": {
+    "value": {
+      "precost_ir": -0.4061797566727026,
+      "beta": 0.6368137608822247,
+      "postcost_reversed_ir": 0.17868383712753
+    },
+    "fundamental_value": {
+      "precost_ir": -0.3199544493104269,
+      "beta": 0.9177150792712088,
+      "postcost_reversed_ir": 0.19222384182331548
+    },
+    "lazy_prices": {
+      "precost_ir": -0.3967853556289564,
+      "beta": 0.9473683098422838,
+      "postcost_reversed_ir": 0.2388936407214993
+    }
+  },
+  "tau_ls": 0.2,
+  "rerun_after_abort_reason": null
+}

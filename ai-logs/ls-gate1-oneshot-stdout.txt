@@ -1,0 +1,6 @@
+methodology_hash 3784b0998303861f8392f308324d789c032bbd64c0f56f20a3ddaaa3c2394c6b
+run_hash e2e5045cf5432c5fec91bfc98d5e23f7b482fb27c2c29e2923c87e4ab9b01d93
+value | precost -0.4062 | beta 0.6368 | postcost_rev 0.1787
+fundamental_value | precost -0.3200 | beta 0.9177 | postcost_rev 0.1922
+lazy_prices | precost -0.3968 | beta 0.9474 | postcost_rev 0.2389
+VERDICT | CLOSED (tau_ls=0.2, rule 2-of-3)
