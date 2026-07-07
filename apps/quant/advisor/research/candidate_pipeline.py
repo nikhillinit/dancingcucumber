@@ -25,6 +25,8 @@ class SweepResultExt:
     ensemble_test_returns: pd.Series
     best_family_test_returns: pd.Series
     chosen_weights: dict
+    ensemble_test_turnover: pd.Series = None
+    ensemble_test_gross: pd.Series = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,7 @@ def run_dev_sweep_ext(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
 
     caps = (cfg.max_asset_weight, cfg.gross_cap, cfg.turnover_cap)
     deltas, ens_parts, best_parts = [], [], []
+    turn_parts, gross_parts = [], []
     chosen = {f: 1.0 / len(families) for f in families}
     for train_idx, test_idx in purged_splits(len(dev), cfg.folds, cfg.embargo):
         all_idx = list(range(min(train_idx), max(test_idx) + 1))
@@ -70,6 +73,8 @@ def run_dev_sweep_ext(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
         blended = pd.DataFrame(blended, columns=dev.columns)
         ens_w = build_long_flat_book(blended, *caps, cfg.cost_per_turn)
         ens_r = book_returns(ens_w, test_prices, cfg.cost_per_turn)
+        turn_parts.append(ens_w.diff().abs().sum(axis=1).fillna(ens_w.abs().sum(axis=1)))
+        gross_parts.append(ens_w.shift(1).fillna(0.0).abs().sum(axis=1))
 
         fam_sharpes, fam_rets = {}, {}
         for f in families:
@@ -95,6 +100,8 @@ def run_dev_sweep_ext(panel: pd.DataFrame, families: tuple, cfg: PreRegConfig,
         ensemble_test_returns=pd.concat(ens_parts, ignore_index=True) if ens_parts else pd.Series(dtype=float),
         best_family_test_returns=pd.concat(best_parts, ignore_index=True) if best_parts else pd.Series(dtype=float),
         chosen_weights=frozen,
+        ensemble_test_turnover=pd.concat(turn_parts, ignore_index=True) if turn_parts else pd.Series(dtype=float),
+        ensemble_test_gross=pd.concat(gross_parts, ignore_index=True) if gross_parts else pd.Series(dtype=float),
     )
 
 
