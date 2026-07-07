@@ -34,6 +34,15 @@ Definitions (panel improvement): **NOT RUN** means the gate was deliberately not
 
 **Stop opening signal lanes.** This follows mechanically from the matrix verdicts: Decision-3 STOPped under its frozen criteria (the survivorship confound cannot be settled at the operator's ceiling — the only native-delisting-return source is access-locked, and every ceiling-fitting vendor omits the terminal loss), and Form-4 was deliberately NOT RUN after its screening criteria were shown to be non-reproducible as frozen and likely concentration-bound by construction on this universe. Per the operator's recorded STOP acceptance (2026-07-06), neither ceiling, window, denominator, threshold, universe, nor classification rules may be revised to salvage a lane. The program continues on its two live, already-frozen tracks: the validation harness asset and the Decision-2 diagnostics lane with its ~2026-09-04 usage evaluation. Enterprise-data funding and a properly re-frozen Form-4 Phase-0 both remain available as future deliberate operator decisions under new filenames.
 
+## Recorded Ruling (operator, 2026-07-06)
+
+**STOP OPENING SIGNAL LANES.** The operator adopted the recommended default, satisfying its allowed-only-if condition (Decision-3 STOPped under frozen criteria; Form-4 NOT RUN). Binding consequences, per the decision table and the operator's recorded STOP acceptance:
+
+- The program continues on exactly two live tracks: the validation-harness asset and the Decision-2 diagnostics lane (usage evaluation ~2026-09-04, frozen kill criterion).
+- No new signal lane may be proposed as a continuation of any existing plan. Reopening requires a new deliberate operator decision under a new filename — specifically: enterprise-data funding via a written quote (Decision-3 escalation path), or a re-frozen standalone Form-4 Phase-0 criteria artifact addressing the ten recorded reproducibility defects plus an explicit fresh hypothesis slot.
+- No ceiling, window, denominator, threshold, universe, or classification rule may be revised to salvage a lane.
+- Disclosure tone (Decision 4) remains parked; the L/S lane remains CLOSED forever; the QC, SESTM, and residual-alpha negatives stand as recorded.
+
 ## Non-Goals
 
 - No parser implementation.
