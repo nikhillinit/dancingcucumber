@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -662,6 +662,7 @@ function parseArgs(argv = []) {
     live: false,
     manualModel: null,
     allowFallback: false,
+    project: null,
     legacyCommand: null,
   };
 
@@ -689,6 +690,9 @@ function parseArgs(argv = []) {
       options.skipPreflightGate = true;
     } else if (arg === '--skip-reason') {
       options.gateSkipReason = argv[index + 1] || '';
+      index += 1;
+    } else if (arg === '--project' || arg === '--cwd') {
+      options.project = resolve(argv[index + 1] || '');
       index += 1;
     } else if (arg === '--workflow') {
       const workflow = argv[index + 1] || '';
@@ -1861,6 +1865,7 @@ function runModelAttempt({
   killTree,
   clock,
   captureOutput,
+  cwd = ROOT,
   rateLimitSignatures,
   emitEvent = null,
 }) {
@@ -1915,6 +1920,8 @@ function runModelAttempt({
         stdio,
         shell: process.platform === 'win32',
         env: childEnv,
+        // cwd selects the child edit target; governance paths stay ROOT-relative.
+        cwd,
       });
     } catch (error) {
       settle({
@@ -2021,6 +2028,7 @@ async function executeModelCommand(
     providerCooldownStore = null,
     providerStateFs = { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync },
     captureOutput = false,
+    cwd = ROOT,
     appendRunEvent: appendEvent = null,
     runId = null,
     role = null,
@@ -2083,6 +2091,7 @@ async function executeModelCommand(
       killTree,
       clock,
       captureOutput,
+      cwd,
       rateLimitSignatures: effectiveRateLimitSignatures,
       emitEvent,
     });
@@ -2125,9 +2134,10 @@ async function executeModelCommand(
   return result;
 }
 
-function executeModel(model, prompt, routing, env = process.env, seams = {}) {
+function executeModel(model, prompt, routing, env = process.env, { cwd = ROOT, ...seams } = {}) {
   return executeModelCommand(model, prompt, routing, env, {
     ...seams,
+    cwd,
     captureOutput: false,
   }).then((result) => result.code);
 }
@@ -2271,10 +2281,12 @@ async function executeModelCapture(
   prompt,
   routing,
   env = process.env,
-  seams = {}
+  { spawn: spawnImpl = spawn, cwd = ROOT, ...seams } = {}
 ) {
   const result = await executeModelCommand(model, prompt, routing, env, {
     ...seams,
+    spawn: spawnImpl,
+    cwd,
     captureOutput: true,
   });
   if (result.failure === MODEL_FAILURE.SPAWN_ERROR && result.error) {
@@ -2326,6 +2338,7 @@ function createLiveRunStep({
   basePrompt = '',
   env = process.env,
   executor = executeModelCapture,
+  cwd = ROOT,
   appendRunEvent: appendEvent = null,
   runId = null,
   root = ROOT,
@@ -2385,6 +2398,7 @@ function createLiveRunStep({
       clock: modelClock,
       eventClock,
       io,
+      cwd,
       envSecrets,
       envPath,
       envLoader,
@@ -2690,6 +2704,7 @@ async function runStepWithProviderFallback({
   plan,
   attempt,
   runId,
+  cwd = ROOT,
   runStep,
   routing,
   env = process.env,
@@ -2698,7 +2713,7 @@ async function runStepWithProviderFallback({
   emitEvent = () => {},
 }) {
   if (!ladderEnabled(routing) || !step.model) {
-    const result = await runStep({ step, input, notes, plan, attempt, runId });
+    const result = await runStep({ step, input, notes, plan, attempt, runId, cwd });
     return {
       result,
       step,
@@ -2715,7 +2730,7 @@ async function runStepWithProviderFallback({
 
   while (true) {
     attemptedProviders.add(currentStep.model);
-    const result = await runStep({ step: currentStep, input, notes, plan, attempt, runId });
+    const result = await runStep({ step: currentStep, input, notes, plan, attempt, runId, cwd });
     const failure = classifyStepResult(result);
     if (!failure) {
       return {
@@ -2849,6 +2864,7 @@ async function executeWorkflow(plan, deps = {}) {
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
   const root = deps.root || ROOT;
+  const cwd = deps.cwd || ROOT;
   const routing = deps.routing || { ladder: plan.ladder || { enabled: false }, commands: {} };
   const env = deps.env || process.env;
   const checkCommandExists = deps.commandExists || commandExists;
@@ -2947,6 +2963,7 @@ async function executeWorkflow(plan, deps = {}) {
       plan,
       attempt,
       runId,
+      cwd,
       runStep,
       routing,
       env,
@@ -3125,6 +3142,7 @@ function printHelp(stdout = process.stdout) {
   node orchestrate.js --json --phase production --task "fix xirr calculation"
   node orchestrate.js --dry-run --phase research --task "trace reserve engine flow"
   node orchestrate.js --dry-run --workflow pair --model codex --phase production --task "implement feature"
+  node orchestrate.js --project <path> --phase production --task "edit another repo"
   node orchestrate.js --phase production --task "repair calc gate" --skip-preflight-gate --skip-reason "<reason>"
 
 Phases:
@@ -3137,6 +3155,8 @@ Model overrides:
   --claude | --codex | --kimi
   --model <claude|codex|kimi>
   --allow-fallback  Permit a manually pinned provider to use the configured fallback ladder.
+  --project, --cwd <path>
+                  Set the child CLI working directory. Governance remains router-local.
 
 Output:
   --dry-run       Print the routing plan and prompt without model execution.
@@ -3249,6 +3269,7 @@ class Orchestrator {
 
 async function main(argv = process.argv.slice(2), env = process.env, io = process, deps = {}) {
   const options = parseArgs(argv);
+  const targetCwd = options.project || ROOT;
   const runModel = deps.executeModel || executeModel;
   const gateRunner = deps.gateRunner || spawnSync;
   const ledgerWriter = deps.writeRunLedger === undefined ? writeRunLedger : deps.writeRunLedger;
@@ -3378,6 +3399,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       commandExists: checkCommandExists,
       isCooling,
     });
+    plan.targetProject = targetCwd;
   } catch (error) {
     if (!error.providerResolution) {
       throw error;
@@ -3497,6 +3519,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         commandExists: checkCommandExists,
         providerCooldownStore,
         providerStateFs,
+        cwd: targetCwd,
       });
     const record = await executeWorkflow(plan, {
       runStep,
@@ -3515,6 +3538,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       availability,
       routing,
       env,
+      cwd: targetCwd,
       commandExists: checkCommandExists,
       isCooling,
       envSecrets: deps.envSecrets,
@@ -3603,6 +3627,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
         scrubber: deps.scrubber,
         providerCooldownStore,
         providerStateFs,
+        cwd: targetCwd,
       },
     });
   } else {
@@ -3620,6 +3645,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       io,
       providerCooldownStore,
       providerStateFs,
+      cwd: targetCwd,
     });
     modelResult = { code, model: plan.model };
   }
