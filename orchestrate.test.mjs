@@ -6,6 +6,7 @@ import { describe, test } from 'node:test';
 import * as router from './orchestrate.mjs';
 
 const {
+  appendRunEvent,
   buildPrompt,
   chooseModel,
   createLiveRunStep,
@@ -294,6 +295,41 @@ function createRecordingFs() {
       calls.push({ method: 'writeFileSync', path, contents });
       files.set(path, String(contents));
     },
+    appendFileSync(path, contents) {
+      calls.push({ method: 'appendFileSync', path, contents });
+      files.set(path, `${files.get(path) || ''}${String(contents)}`);
+    },
+    renameSync(from, to) {
+      calls.push({ method: 'renameSync', from, to });
+      if (!files.has(from)) {
+        const error = new Error(`ENOENT: no such file or directory, rename '${from}' -> '${to}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      files.set(to, files.get(from));
+      files.delete(from);
+    },
+    existsSync(path) {
+      calls.push({ method: 'existsSync', path });
+      return files.has(path);
+    },
+    readFileSync(path) {
+      calls.push({ method: 'readFileSync', path });
+      if (!files.has(path)) {
+        const error = new Error(`ENOENT: no such file or directory, open '${path}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return files.get(path);
+    },
+    readdirSync(path) {
+      calls.push({ method: 'readdirSync', path });
+      const prefix = path.endsWith('\\') || path.endsWith('/') ? path : `${path}\\`;
+      return [...files.keys()]
+        .filter((file) => file.startsWith(prefix))
+        .map((file) => file.slice(prefix.length))
+        .filter((name) => name && !name.includes('\\') && !name.includes('/'));
+    },
   };
 }
 
@@ -336,6 +372,14 @@ function gateRunner(status = 0, calls = []) {
   };
 }
 
+function parseJsonl(contents) {
+  return String(contents || '')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 function recordCommandExists(missingBins = []) {
   const missing = new Set(missingBins);
   const calls = [];
@@ -352,6 +396,7 @@ describe('Hermes router public surface', () => {
     assert.deepEqual(
       [
         'Orchestrator',
+        'appendRunEvent',
         'assertFinancialGate',
         'buildDoctorReport',
         'buildPrompt',
@@ -672,6 +717,47 @@ describe('test fakes and DI seams', () => {
     assert.equal(fs.files.get(file).endsWith('\n'), true);
   });
 
+  test('appendRunEvent appends scrubbed JSONL through the injected fs', () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const runId = 'hermes-2026-07-07T19-04-07-684Z';
+
+    const file = appendRunEvent(
+      runId,
+      {
+        type: 'dispatch_error',
+        role: 'owner',
+        model: 'codex',
+        failure: 'nonzero_exit',
+        excerpt: 'API_KEY=raw-key-value',
+      },
+      {
+        root,
+        fs,
+        clock: () => new Date('2026-07-07T19:04:08.000Z'),
+        envSecrets: [],
+      }
+    );
+
+    assert.equal(file, join(root, 'ai-logs', 'hermes', 'runs', `${runId}.events.jsonl`));
+    assert.deepEqual(fs.calls[0], {
+      method: 'mkdirSync',
+      path: join(root, 'ai-logs', 'hermes', 'runs'),
+      options: { recursive: true },
+    });
+    const rows = parseJsonl(fs.files.get(file));
+    assert.deepEqual(rows, [
+      {
+        ts: '2026-07-07T19:04:08.000Z',
+        type: 'dispatch_error',
+        role: 'owner',
+        model: 'codex',
+        failure: 'nonzero_exit',
+        excerpt: 'API_KEY=[SCRUBBED:keyvalue]',
+      },
+    ]);
+  });
+
   test('writeRunLedger masks token, key-value, and injected env secret output bodies', () => {
     const fs = createRecordingFs();
     const root = join('C:\\', 'tmp', 'hermes-test-root');
@@ -942,6 +1028,7 @@ describe('main dependency seams', () => {
         writeRunLedger(record) {
           ledgers.push(record);
         },
+        appendRunEvent: null,
         clock: () => new Date('2026-07-07T19:04:07.684Z'),
       }
     );
@@ -994,6 +1081,7 @@ describe('main dependency seams', () => {
         writeRunLedger(record) {
           ledgers.push(record);
         },
+        appendRunEvent: null,
         clock: () => new Date('2026-07-07T19:04:07.684Z'),
       }
     );
@@ -1043,6 +1131,8 @@ describe('main dependency seams', () => {
         writeRunLedger(record) {
           ledgers.push(record);
         },
+        appendRunEvent: null,
+        writeRunCheckpoint: null,
         clock: () => new Date('2026-07-07T19:04:07.684Z'),
       }
     );
@@ -1086,6 +1176,7 @@ describe('main dependency seams', () => {
 
   test('executeWorkflow sends scrubbed step outputs to injected ledger writers', async () => {
     const ledgers = [];
+    const fs = createRecordingFs();
     const plan = {
       phase: 'production',
       risk: 'standard',
@@ -1110,6 +1201,9 @@ describe('main dependency seams', () => {
       writeRunLedger(ledger) {
         ledgers.push(ledger);
       },
+      appendRunEvent: null,
+      checkpointFs: fs,
+      root: join('C:\\', 'tmp', 'hermes-test-root'),
       clock: () => new Date('2026-07-07T19:04:07.684Z'),
     });
 
@@ -1118,6 +1212,242 @@ describe('main dependency seams', () => {
     assert.equal(ledgers[0].steps[0].output, 'owner leaked [SCRUBBED:envvalue]');
     assert.equal(ledgers[0].steps[0].scrubCount, 1);
     assert.equal(ledgers[0].steps[1].scrubCount, 0);
+  });
+
+  test('live workflow appends compact step and gate events without output bodies', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const clock = createFakeClock();
+    const runId = 'hermes-2026-07-07T19-04-07-684Z';
+    const eventFile = join(root, 'ai-logs', 'hermes', 'runs', `${runId}.events.jsonl`);
+
+    const code = await main(
+      ['--workflow', 'pair', '--live', '--phase', 'production', '--task', 'add router tests'],
+      {},
+      captured.io,
+      {
+        routing: routingFixture(),
+        brain: 'DEV_BRAIN fixture',
+        soul: 'SOUL fixture',
+        gateRunner: gateRunner(0),
+        commandExists: recordCommandExists(),
+        async runStep({ step }) {
+          clock.advance(7);
+          return { code: 0, approved: step.role === 'reviewer', output: `${step.role} body` };
+        },
+        writeRunLedger() {},
+        appendRunEvent(run, event, options) {
+          return appendRunEvent(run, event, { ...options, root, fs });
+        },
+        checkpointFs: fs,
+        root,
+        clock: () => clock.now(),
+      }
+    );
+
+    assert.equal(code, 0);
+    assert.equal(captured.output().stderr, '');
+    const rows = parseJsonl(fs.files.get(eventFile));
+    assert.deepEqual(
+      rows.map((row) => row.type),
+      ['gate_result', 'step_start', 'step_end', 'step_start', 'step_end', 'gate_result']
+    );
+    assert.equal(rows.find((row) => row.type === 'step_end').durationMs, 7);
+    assert.equal(JSON.stringify(rows).includes('owner body'), false);
+    assert.equal(JSON.stringify(rows).includes('reviewer body'), false);
+  });
+
+  test('appendRunEvent failure warns once and does not change workflow exitCode', async () => {
+    const captured = captureIo();
+    const ledgers = [];
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          { role: 'owner', model: 'codex', action: 'execute' },
+          { role: 'reviewer', model: 'claude', action: 'review' },
+        ],
+      },
+    };
+
+    const record = await executeWorkflow(plan, {
+      async runStep({ step }) {
+        return { code: 0, approved: step.role === 'reviewer', output: `${step.role} output` };
+      },
+      writeRunLedger(ledger) {
+        ledgers.push(ledger);
+      },
+      appendRunEvent() {
+        throw new Error('events locked');
+      },
+      checkpointFs: createRecordingFs(),
+      root: join('C:\\', 'tmp', 'hermes-test-root'),
+      io: captured.io,
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    assert.equal(record.exitCode, 0);
+    assert.equal(ledgers.length, 1);
+    const warning = captured.output().stderr.match(/failed to write run event log/g) || [];
+    assert.equal(warning.length, 1);
+  });
+
+  test('malformed config errors include the filename and still write a failure ledger', async () => {
+    const captured = captureIo();
+    const ledgers = [];
+    const fs = createRecordingFs();
+    const configPath = join('C:\\', 'tmp', 'bad-routing.json');
+    fs.files.set(configPath, '{ bad json');
+
+    await assert.rejects(
+      main(
+        ['--phase', 'production', '--task', 'add router tests'],
+        { HERMES_MODEL_ROUTING_FILE: configPath },
+        captured.io,
+        {
+          fs,
+          writeRunLedger(record) {
+            ledgers.push(record);
+          },
+          clock: () => new Date('2026-07-07T19:04:07.684Z'),
+        }
+      ),
+      (error) => error instanceof SyntaxError && error.message.includes(configPath)
+    );
+
+    assert.equal(ledgers.length, 1);
+    assert.equal(ledgers[0].runId, 'hermes-2026-07-07T19-04-07-684Z');
+    assert.equal(ledgers[0].phase, 'production');
+    assert.equal(ledgers[0].exitCode, 1);
+    assert.match(ledgers[0].error, /Invalid JSON in/);
+    assert.match(ledgers[0].error, /bad-routing\.json/);
+  });
+
+  test('interrupted workflow flushes an interrupted checkpoint without approval bodies', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const runId = 'hermes-2026-07-07T19-04-07-684Z';
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          { role: 'owner', model: 'codex', action: 'execute' },
+          { role: 'reviewer', model: 'claude', action: 'review' },
+        ],
+      },
+    };
+
+    await assert.rejects(
+      executeWorkflow(plan, {
+        runId,
+        async runStep({ step }) {
+          if (step.role === 'owner') {
+            return { code: 0, output: 'owner body APPROVED' };
+          }
+          throw new Error('router died mid-run');
+        },
+        writeRunLedger() {
+          throw new Error('final ledger should not be written');
+        },
+        appendRunEvent: null,
+        checkpointFs: fs,
+        root,
+        clock: () => new Date('2026-07-07T19:04:07.684Z'),
+      }),
+      /router died mid-run/
+    );
+
+    const file = join(root, 'ai-logs', 'hermes', 'runs', `${runId}.json`);
+    const persisted = fs.files.get(file);
+    const checkpoint = JSON.parse(persisted);
+    assert.equal(checkpoint.status, 'interrupted');
+    assert.equal(persisted.includes('APPROVED'), false);
+    assert.equal(persisted.includes('"approved": true'), false);
+  });
+
+  test('in-progress checkpoints exclude output bodies while the final ledger includes them', async () => {
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const runId = 'hermes-2026-07-07T19-04-07-684Z';
+    const plan = {
+      phase: 'production',
+      risk: 'standard',
+      gate: null,
+      workflow: {
+        selected: 'pair',
+        steps: [
+          { role: 'owner', model: 'codex', action: 'execute' },
+          { role: 'reviewer', model: 'claude', action: 'review' },
+        ],
+      },
+    };
+
+    await executeWorkflow(plan, {
+      runId,
+      async runStep({ step }) {
+        if (step.role === 'owner') {
+          return { code: 0, output: 'owner full body' };
+        }
+        return { code: 0, approved: true, output: 'reviewer full body' };
+      },
+      writeRunLedger(record) {
+        return writeRunLedger(record, { root, fs, envSecrets: [] });
+      },
+      appendRunEvent: null,
+      checkpointFs: fs,
+      root,
+      clock: () => new Date('2026-07-07T19:04:07.684Z'),
+    });
+
+    const checkpointWrites = fs.calls.filter(
+      (call) => call.method === 'writeFileSync' && String(call.contents).includes('"in-progress"')
+    );
+    assert.equal(checkpointWrites.length >= 2, true);
+    for (const write of checkpointWrites) {
+      assert.equal(String(write.contents).includes('owner full body'), false);
+      assert.equal(String(write.contents).includes('reviewer full body'), false);
+      assert.equal(String(write.contents).includes('"output"'), false);
+    }
+
+    const finalFile = join(root, 'ai-logs', 'hermes', 'runs', `${runId}.json`);
+    const finalLedger = JSON.parse(fs.files.get(finalFile));
+    assert.equal(finalLedger.steps[0].output, 'owner full body');
+    assert.equal(finalLedger.steps[1].output, 'reviewer full body');
+  });
+
+  test('doctor reports stale in-progress run ledgers older than 24h', async () => {
+    const captured = captureIo();
+    const fs = createRecordingFs();
+    const root = join('C:\\', 'tmp', 'hermes-test-root');
+    const staleRunId = 'hermes-2026-07-06T18-00-00-000Z';
+    fs.files.set(
+      join(root, 'ai-logs', 'hermes', 'runs', `${staleRunId}.json`),
+      JSON.stringify({
+        runId: staleRunId,
+        status: 'in-progress',
+        updatedAt: '2026-07-06T18:00:00.000Z',
+      })
+    );
+
+    const code = await main(['doctor'], {}, captured.io, {
+      routing: routingFixture(),
+      commandExists: recordCommandExists(),
+      fs,
+      root,
+      clock: () => new Date('2026-07-07T19:30:00.000Z'),
+    });
+
+    assert.equal(code, 0);
+    assert.match(captured.output().stdout, /Stale in-progress runs/);
+    assert.match(captured.output().stdout, new RegExp(staleRunId));
+    assert.match(captured.output().stdout, /25h/);
   });
 });
 
