@@ -22,6 +22,7 @@
 - Gates 1–2 evidence collection is web/vendor/SEC research: run it in a web-capable research lane (Claude-side), NOT via a sandboxed Codex/Hermes dispatch (QC-prereg precedent: networked research is operator/Claude-side; Hermes implements deterministic code only after a source contract is frozen).
 - Artifact filenames below carry the 2026-07-06 stamp; if an artifact is created on a later date, substitute the actual creation date in its filename and update cross-references.
 - Step-0 is binding precedent (operator ruling 2026-07-06): `docs/superpowers/plans/2026-06-23-qc-source-integrity-diagnostic-prereg.md` §1 already established that no affordable source natively supplies delisting returns (only CRSP `DLRET`, access-locked; QC/Sharadar/Norgate omit bankruptcy terminal loss). Gate 1 evaluates only the delta, never re-runs Step-0.
+- Operator STOP acceptance (recorded 2026-07-06, before Gate-1 execution): "I accept STOP as the modal and valid outcome. If Gate 1 or Gate 2 fails under the frozen ceilings, window, count thresholds, uncertainty caps, or concentration caps, I will not revise the budget, window, denominator, threshold, universe, or classification rules to salvage a lane. A STOP means stop opening signal lanes unless a new operator decision deliberately funds enterprise data or opens a new hypothesis under a new filename."
 
 ---
 
@@ -293,10 +294,10 @@ Can SEC Form 4 / ownership data support a future preregistered insider-trade lan
 | Filing availability | Filing date is available from SEC data, and accepted timestamp is available from archive metadata if sub-day timing is ever needed. | Event date is the only usable date, or filing availability cannot be reconstructed. |
 | Transaction fields | Transaction date, transaction code, shares/value, price, and acquired/disposed flag are typed or reliably parseable. | Any required transaction field is missing or only inferable from prose. |
 | 10b5-1 handling | 2023+ plan flag or plan-adoption disclosure is usable; older data has a conservative `uncertain` bucket. | Unknown plan status would be treated as discretionary, or plan trades cannot be separated from discretionary trades. |
-| Routine classification | The matrix defines `discretionary`, `10b5-1`, and `uncertain` buckets before any count, and `uncertain` stays <= 15% in EACH primary denominator (purchase count, sale count, purchase dollar value, sale dollar value). | Routine/unknown events folded into a favorable bucket, or `uncertain` > 15% in any primary denominator (unknown plan status is unavailable, not neutral — do not infer discretion from silence). |
+| Routine classification | The matrix defines `non-10b5-1`, `10b5-1`, and `uncertain` buckets before any count, and `uncertain` stays <= 15% in EACH primary denominator (purchase count, sale count, purchase dollar value, sale dollar value). | Routine/unknown events folded into a favorable bucket, or `uncertain` > 15% in any primary denominator (unknown plan status is unavailable, not neutral — do not infer discretion from silence). |
 | Universe and dates | Universe is the current advisor floor for feasibility counts; filed-date keyed; no post-hoc small-cap expansion. | Universe expands after seeing counts, or transaction-date keyed availability is substituted. |
-| Event density | >= 100 usable discretionary events (dedup: same issuer + same insider + same accession + same direction = one event) AND >= 20 open-market purchases AND >= 20 open-market sales AND >= 12 distinct issuers, inside the frozen window. | Any count bar missed. If only one side (buys or sells) clears, the two-sided lane FAILS — a one-sided lane needs a new prereg. |
-| Concentration | No single issuer > 20% of usable discretionary event count or > 35% of usable discretionary dollar value; no single insider > 10% of event count. | Any concentration bar breached — underpowered/narrative-prone even if raw counts look acceptable. |
+| Event density | >= 100 usable non-10b5-1 open-market events (dedup: same issuer + same insider + same accession + same direction = one event) AND >= 20 open-market purchases AND >= 20 open-market sales AND >= 12 distinct issuers, inside the frozen window. | Any count bar missed. If only one side (buys or sells) clears, the two-sided lane FAILS — a one-sided lane needs a new prereg. |
+| Concentration | No single issuer > 20% of usable non-10b5-1 open-market event count or > 35% of usable non-10b5-1 dollar value; no single insider > 10% of event count. | Any concentration bar breached — underpowered/narrative-prone even if raw counts look acceptable. |
 | Parser proof | At least three representative sample filings parse into the required typed fields outside app code, or official SEC flat files cover the same fields. | Parser proof requires changing `apps/quant/advisor` or does not cover representative filings. |
 | No-alpha boundary | Matrix contains only availability, classification, and count evidence. | Any return, CAR, Sharpe, IR, effect-size, floor, holdout, or candidate metric is inspected. |
 
@@ -304,15 +305,17 @@ Can SEC Form 4 / ownership data support a future preregistered insider-trade lan
 
 PASS only if every required criterion passes at its pinned threshold (>= 100 / >= 20 / >= 20 / >= 12 counts; <= 15% uncertain per primary denominator; <= 20% / <= 35% / <= 10% concentration). STOP if any required field is missing, any pinned bar is missed, denominator choice is ambiguous, or any alpha metric is touched. PASS authorizes only a later operator ruling on whether to write a Form-4 prereg.
 
-## Frozen Evaluation Window (operator ratifies at Gate-2 authorization; immovable after any count is observed)
+## Frozen Evaluation Window (RATIFIED by operator 2026-07-06; immovable)
 
-- Gating window: filed dates 2023-04-01 through 2026-06-30 (structured 10b5-1 checkbox era — plan status is typed, not inferred).
+- Gating window: filed dates 2023-04-01 through 2026-06-30 (structured 10b5-1 checkbox era per the SEC amendments effective for reports filed on or after 2023-04-01 — plan status is typed, not inferred).
 - Secondary, NON-GATING report: filed dates 2015-01-01 through 2023-03-31, with every unknown-plan event bucketed `uncertain` (expected to breach the 15% cap; reported for context only).
+- FIXED end date: no roll-forward or backfill if Gate 2 runs later. A newer window requires a NEW criteria filename, adopted before any count is observed.
+- Terminology (operator amendment): the checkbox proves 10b5-1 status only, NOT opportunistic intent (Cohen/Malloy/Pomorski sense). The counted bucket is `non-10b5-1 open-market`; the labels "discretionary"/"opportunistic" are reserved for a future prereg that freezes a routine/opportunistic classifier first.
 
 ## Predeclared Denominators
 
 - Event definition: one event = same issuer + same insider + same accession + same direction (collapse duplicates before any count).
-- Count denominator: number of usable open-market transactions after categorizing each event as `discretionary`, `10b5-1`, or `uncertain`.
+- Count denominator: number of usable open-market transactions after categorizing each event as `non-10b5-1`, `10b5-1`, or `uncertain`.
 - Dollar denominator: gross disclosed transaction value where price and shares are available.
 - Purchases and sales are reported separately, in counts and in dollars (four primary denominators).
 - Filed date is the availability key.
