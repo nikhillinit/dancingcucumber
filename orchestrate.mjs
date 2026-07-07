@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -91,9 +91,17 @@ const BEARER_TOKEN_PATTERN = /\b((?:Bearer|Token)\s+)([A-Za-z0-9._~+/=-]{32,})/g
 
 const DEFAULT_DEBATE = {
   comparators: ['claude', 'codex', 'kimi'],
+  rebuttal: 'claude',
   synthesis: 'claude',
 };
-const REVIEW_FALLBACK_ROLES = new Set(['reviewer', 'comparator', 'synthesis', 'redteam', 'blind']);
+const REVIEW_FALLBACK_ROLES = new Set([
+  'reviewer',
+  'comparator',
+  'rebuttal',
+  'synthesis',
+  'redteam',
+  'blind',
+]);
 const WRITE_CAPABLE_STEP_ROLES = new Set(['owner']);
 const REVIEW_LANE_ELIGIBLE_MODELS = new Set(['claude', 'codex', 'kimi']);
 
@@ -280,6 +288,217 @@ function getRunEventsPath(runId, { root = ROOT } = {}) {
   return join(getRunsDir(root), `${runId}.events.jsonl`);
 }
 
+function getDebateRunRecordPath(dateStamp, { root = ROOT } = {}) {
+  return join(getRunsDir(root), `debate-run-${dateStamp}.json`);
+}
+
+function coerceDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function dateFromHermesRunId(runId) {
+  const match = String(runId || '').match(
+    /^hermes-(\d{4}-\d{2}-\d{2}T)(\d{2})-(\d{2})-(\d{2})-(\d{3}Z)$/
+  );
+  if (!match) return null;
+  return coerceDate(`${match[1]}${match[2]}:${match[3]}:${match[4]}.${match[5]}`);
+}
+
+function safeDateStamp(date) {
+  return date.toISOString().replace(/[:.]/g, '-');
+}
+
+function projectNameFromRoot(root = ROOT) {
+  return String(basename(root) || 'project').replace(/[^A-Za-z0-9._-]/g, '-');
+}
+
+function debateTimestamp({ record, clock }) {
+  if (typeof clock === 'function') {
+    const date = coerceDate(clock());
+    if (date) return date;
+  }
+  return dateFromHermesRunId(record?.runId) || new Date();
+}
+
+function modelFamilyFor(model) {
+  const value = String(model || '').toLowerCase();
+  if (value.includes('claude')) return 'claude';
+  if (value.includes('codex') || value.includes('openai') || /^gpt[-_]/.test(value)) {
+    return 'openai';
+  }
+  if (value.includes('kimi')) return 'moonshot';
+  if (value.includes('gemini') || value.includes('agy')) return 'gemini';
+  if (value.includes('ollama')) return 'local';
+  if (value.includes('qwen')) return 'qwen';
+  return 'unknown';
+}
+
+function debateLaneStatus(step) {
+  return (step?.code ?? 0) === 0 ? 'ok' : 'failed';
+}
+
+function debateFailureDetail(step, lane) {
+  return `${lane} lane exited with code ${step?.code ?? 1}`;
+}
+
+function extractDebateVerdict(step) {
+  const output = String(step?.output || '');
+  if (/\bAPPROVE[-\s]?WITH[-\s]?CHANGES\b/i.test(output) || /CHANGES REQUESTED/i.test(output)) {
+    return 'APPROVE-WITH-CHANGES';
+  }
+  if (/\bREJECT(?:ED)?\b/i.test(output)) {
+    return 'REJECT';
+  }
+  if (/\bAPPROVE(?:D)?\b/i.test(output)) {
+    return 'APPROVE';
+  }
+  if (step?.approved === true) return 'APPROVE';
+  if (step?.approved === false) return 'APPROVE-WITH-CHANGES';
+  return 'n/a';
+}
+
+function buildDebateRunRecord(record, { root = ROOT, clock } = {}) {
+  const completedDate = debateTimestamp({ record, clock });
+  const completedAt = record.completedAt || completedDate.toISOString();
+  const startedAt =
+    record.startedAt || dateFromHermesRunId(record.runId)?.toISOString() || completedAt;
+  const project = record.project || projectNameFromRoot(root);
+  const steps = Array.isArray(record.steps) ? record.steps : [];
+  const comparatorSteps = steps.filter((step) => step?.role === 'comparator');
+  const rebuttalSteps = steps.filter((step) => step?.role === 'rebuttal');
+  const synthesisStep = steps.find((step) => step?.role === 'synthesis') || null;
+  const lanes = [];
+  const providerDiagnostics = [];
+  const deviationsFromSpec = [
+    {
+      what: 'router runs model-based comparators, not distinct redteam/blind lanes',
+      why: 'router transport maps N comparator models onto the spec lane set',
+    },
+  ];
+
+  const addLane = (step, lane) => {
+    const status = debateLaneStatus(step);
+    const requested = step.requestedModel || null;
+    const selected = step.selectedModel || step.model || null;
+    const entry = {
+      lane,
+      modelFamily: modelFamilyFor(step.model),
+      model: step.model || null,
+      transport: 'router',
+      threadId: step.threadId || null,
+      rounds: 1,
+      outputFile: step.outputFile || null,
+      status,
+      verdict: 'n/a',
+    };
+    lanes.push(entry);
+
+    if (status === 'failed') {
+      const detail = debateFailureDetail(step, lane);
+      deviationsFromSpec.push({ what: `${lane} lane failed`, why: detail });
+      providerDiagnostics.push({
+        provider: step.model || lane,
+        status: step.failure || 'nonzero_exit',
+        detail,
+      });
+    }
+
+    if (requested && selected && requested !== selected) {
+      deviationsFromSpec.push({
+        what: `${lane} lane substituted ${requested} with ${selected}`,
+        why: 'router fallback selected a different provider',
+      });
+    }
+  };
+
+  // The router uses model-based comparator lanes; this is the explicit v1
+  // impedance match to the role-named debate spec lanes.
+  for (const step of comparatorSteps) {
+    addLane(step, step.model || 'unknown');
+  }
+  for (const step of rebuttalSteps) {
+    addLane(step, 'rebuttal');
+  }
+
+  const synthesisSkipped = comparatorSteps.length > 0 && !synthesisStep;
+  if (synthesisSkipped) {
+    deviationsFromSpec.push({
+      what: 'synthesis step skipped',
+      why: 'debate workflow completed comparator/rebuttal lanes without a synthesis step record',
+    });
+  }
+
+  return {
+    runId: `debate-${project}-${completedDate.toISOString()}`,
+    workflow: 'hermes-debate/v1',
+    project,
+    artifactReviewed: record.artifactReviewed || null,
+    startedAt,
+    completedAt,
+    lanes,
+    providerDiagnostics,
+    deviationsFromSpec,
+    synthesisFile: synthesisStep?.outputFile || null,
+    finalVerdict: synthesisSkipped ? null : synthesisStep ? extractDebateVerdict(synthesisStep) : null,
+  };
+}
+
+function validateDebateRunRecordShape(record) {
+  const errors = [];
+  const warnings = [];
+  const requireString = (field) => {
+    if (typeof record?.[field] !== 'string' || record[field].length === 0) {
+      errors.push(`${field} must be a non-empty string`);
+    }
+  };
+
+  for (const field of ['runId', 'workflow', 'project', 'startedAt', 'completedAt']) {
+    requireString(field);
+  }
+  if (!Array.isArray(record?.lanes)) errors.push('lanes must be an array');
+  if (!Array.isArray(record?.providerDiagnostics)) {
+    errors.push('providerDiagnostics must be an array');
+  }
+  if (!Array.isArray(record?.deviationsFromSpec)) {
+    errors.push('deviationsFromSpec must be an array');
+  }
+  if (record?.finalVerdict !== null && typeof record?.finalVerdict !== 'string') {
+    errors.push('finalVerdict must be a string or null');
+  }
+
+  const laneNames = new Set(['claude', 'redteam', 'blind', 'rebuttal']);
+  const statuses = new Set(['ok', 'failed', 'fallback']);
+  const verdicts = new Set(['APPROVE', 'APPROVE-WITH-CHANGES', 'REJECT', 'n/a']);
+  const finalVerdicts = new Set(['APPROVE', 'APPROVE-WITH-CHANGES', 'REJECT']);
+
+  if (Array.isArray(record?.lanes)) {
+    record.lanes.forEach((lane, index) => {
+      if (typeof lane?.lane !== 'string' || lane.lane.length === 0) {
+        errors.push(`lanes[${index}].lane must be a non-empty string`);
+      } else if (!laneNames.has(lane.lane)) {
+        warnings.push(`lanes[${index}].lane is outside the role-name enum`);
+      }
+      if (typeof lane?.status !== 'string' || lane.status.length === 0) {
+        errors.push(`lanes[${index}].status must be present`);
+      } else if (!statuses.has(lane.status)) {
+        warnings.push(`lanes[${index}].status is outside the status enum`);
+      }
+      if (typeof lane?.verdict !== 'string' || lane.verdict.length === 0) {
+        errors.push(`lanes[${index}].verdict must be present`);
+      } else if (!verdicts.has(lane.verdict)) {
+        warnings.push(`lanes[${index}].verdict is outside the verdict enum`);
+      }
+    });
+  }
+
+  if (typeof record?.finalVerdict === 'string' && !finalVerdicts.has(record.finalVerdict)) {
+    warnings.push('finalVerdict is outside the final verdict enum');
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
 function removeOutputBodyFields(value) {
   if (Array.isArray(value)) {
     return value.map((entry) => removeOutputBodyFields(entry));
@@ -357,6 +576,17 @@ function warnEventFailure(io, message) {
   io.stderr.write(`[hermes] WARNING: failed to write run event log: ${message}\n`);
 }
 
+function warnDebateRunRecordValidation(io, validation) {
+  const count = validation.errors.length + validation.warnings.length;
+  io.stderr.write(
+    `[hermes] WARNING: debate run record validation reported ${count} issue(s); writing anyway.\n`
+  );
+}
+
+function warnDebateRunRecordFailure(io, message) {
+  io.stderr.write(`[hermes] WARNING: failed to write debate run record: ${message}\n`);
+}
+
 function writePreparedLedgerBestEffort({
   ledgerWriter,
   record,
@@ -373,6 +603,24 @@ function writePreparedLedgerBestEffort({
     ledgerWriter(prepared, { envSecrets: [] });
   } catch (error) {
     warnLedgerFailure(io, error.message);
+    if (emitEvent) {
+      emitEvent({ type: RUN_EVENT_TYPES.LEDGER_FLUSH_FAILURE, message: error.message });
+    }
+  }
+}
+
+function writeDebateRunRecordBestEffort({
+  debateRunWriter,
+  record,
+  options,
+  io = process,
+  emitEvent = null,
+}) {
+  if (!debateRunWriter || record?.workflow !== 'debate') return;
+  try {
+    debateRunWriter(record, options);
+  } catch (error) {
+    warnDebateRunRecordFailure(io, error.message);
     if (emitEvent) {
       emitEvent({ type: RUN_EVENT_TYPES.LEDGER_FLUSH_FAILURE, message: error.message });
     }
@@ -1147,6 +1395,7 @@ function createWorkflowPlan({
         ? debateConfig.comparators
         : DEFAULT_DEBATE.comparators;
     const synthesisModel = debateConfig.synthesis || DEFAULT_DEBATE.synthesis;
+    const rebuttalModel = debateConfig.rebuttal || synthesisModel;
 
     for (const comparatorModel of comparatorModels) {
       steps.push({
@@ -1155,6 +1404,12 @@ function createWorkflowPlan({
         action: `compare ${effectivePhase} options`,
       });
     }
+
+    steps.push({
+      role: 'rebuttal',
+      model: rebuttalModel,
+      action: 'verify and rebut comparator critiques against ground truth',
+    });
 
     steps.push({
       role: 'synthesis',
@@ -2198,6 +2453,27 @@ function writeRunLedger(
   return file;
 }
 
+function writeDebateRunRecord(
+  record,
+  { root = ROOT, fs = { mkdirSync, writeFileSync }, clock, io = process } = {}
+) {
+  const completedDate = debateTimestamp({ record, clock });
+  const debateRecord = buildDebateRunRecord(record, { root, clock: () => completedDate });
+  const validation = validateDebateRunRecordShape(debateRecord);
+  const dateStamp = safeDateStamp(completedDate);
+  const dir = getRunsDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = getDebateRunRecordPath(dateStamp, { root });
+  fs.writeFileSync(file, `${JSON.stringify(debateRecord, null, 2)}\n`);
+  if (validation.errors.length > 0 || validation.warnings.length > 0) {
+    warnDebateRunRecordValidation(io, validation);
+  }
+  return {
+    file,
+    validation,
+  };
+}
+
 function appendRunEvent(
   runId,
   event,
@@ -2568,6 +2844,8 @@ async function executeWorkflow(plan, deps = {}) {
   const gateRunner = deps.gateRunner || spawnSync;
   const assertGate = deps.assertFinancialGate || assertFinancialGate;
   const ledgerWriter = deps.writeRunLedger === undefined ? null : deps.writeRunLedger;
+  const debateRunWriter =
+    deps.writeDebateRunRecord === undefined ? null : deps.writeDebateRunRecord;
   const clock = deps.clock || (() => new Date());
   const runId = deps.runId || generateRunId(clock());
   const root = deps.root || ROOT;
@@ -2619,6 +2897,7 @@ async function executeWorkflow(plan, deps = {}) {
   const reviewerStep = stepByRole('reviewer');
   const auditStep = stepByRole('audit');
   const comparatorSteps = workflow.steps.filter((step) => step.role === 'comparator');
+  const rebuttalStep = stepByRole('rebuttal');
   const synthesisStep = stepByRole('synthesis');
 
   let specialistNotes = null;
@@ -2733,8 +3012,13 @@ async function executeWorkflow(plan, deps = {}) {
         const comparator = await runRecorded(comparatorStep, null, 0);
         comparatorOutputs.push(comparator.output ?? '');
       }
+      let synthesisInput = comparatorOutputs;
+      if (rebuttalStep) {
+        const rebuttal = await runRecorded(rebuttalStep, comparatorOutputs, 0);
+        synthesisInput = [...comparatorOutputs, `REBUTTAL:\n${rebuttal.output ?? ''}`];
+      }
       if (synthesisStep) {
-        const synthesis = await runRecorded(synthesisStep, comparatorOutputs, 0);
+        const synthesis = await runRecorded(synthesisStep, synthesisInput, 0);
         artifact = synthesis.output ?? '';
       }
     } else {
@@ -2810,6 +3094,18 @@ async function executeWorkflow(plan, deps = {}) {
       ledgerWriter,
       record,
       scrubOptions: ledgerScrubOptions,
+      io,
+      emitEvent,
+    });
+    writeDebateRunRecordBestEffort({
+      debateRunWriter,
+      record,
+      options: {
+        root,
+        fs: deps.debateRunFs || { mkdirSync, writeFileSync },
+        clock,
+        io,
+      },
       io,
       emitEvent,
     });
@@ -2956,6 +3252,8 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
   const runModel = deps.executeModel || executeModel;
   const gateRunner = deps.gateRunner || spawnSync;
   const ledgerWriter = deps.writeRunLedger === undefined ? writeRunLedger : deps.writeRunLedger;
+  const debateRunWriter =
+    deps.writeDebateRunRecord === undefined ? writeDebateRunRecord : deps.writeDebateRunRecord;
   const clock = deps.clock || (() => new Date());
   const root = deps.root || ROOT;
   const fsReader = deps.fs || { existsSync, readFileSync, readdirSync };
@@ -3204,6 +3502,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = proces
       runStep,
       gateRunner,
       writeRunLedger: ledgerWriter,
+      writeDebateRunRecord: debateRunWriter,
       writeRunCheckpoint:
         deps.writeRunCheckpoint === undefined ? writeRunCheckpoint : deps.writeRunCheckpoint,
       checkpointFs: deps.checkpointFs,
@@ -3401,5 +3700,7 @@ export {
   runGate,
   shouldRunPostflightGate,
   scoreSpecialist,
+  validateDebateRunRecordShape,
+  writeDebateRunRecord,
   writeRunLedger,
 };
