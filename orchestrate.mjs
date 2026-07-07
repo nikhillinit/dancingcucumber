@@ -94,6 +94,8 @@ const DEFAULT_DEBATE = {
   synthesis: 'claude',
 };
 const REVIEW_FALLBACK_ROLES = new Set(['reviewer', 'comparator', 'synthesis', 'redteam', 'blind']);
+const WRITE_CAPABLE_STEP_ROLES = new Set(['owner']);
+const REVIEW_LANE_ELIGIBLE_MODELS = new Set(['claude', 'codex', 'kimi']);
 
 class ProviderResolutionError extends Error {
   constructor(message, { role, providerDiagnostics = [], failureLedger = [], tried = [] } = {}) {
@@ -1330,6 +1332,46 @@ function isWriteCapableCommand(commandConfig) {
   return (commandConfig?.args || []).some((arg) => arg === 'workspace-write' || arg === '--yolo');
 }
 
+function resolveSandboxArgs(routing, model, role) {
+  const commandConfig = routing?.commands?.[model] || null;
+  const normalArgs = Array.isArray(commandConfig?.args) ? commandConfig.args : [];
+  if (WRITE_CAPABLE_STEP_ROLES.has(String(role || ''))) {
+    return [...normalArgs];
+  }
+
+  if (Array.isArray(commandConfig?.readOnlyArgs)) {
+    return [...commandConfig.readOnlyArgs];
+  }
+
+  // Claude and Kimi are text-only CLI lanes here; other providers without a
+  // readOnlyArgs profile keep argv unchanged and must be governed separately.
+  return [...normalArgs];
+}
+
+function isReviewLaneEligible(model) {
+  const provider = String(model || '').toLowerCase();
+  // Review-lane selection must consult this data before provider fallback:
+  // agy has stdin delivery but unproven sandbox posture, while gemini is
+  // auth-dead and its empty --prompt= config relies on stdin being honored.
+  return REVIEW_LANE_ELIGIBLE_MODELS.has(provider);
+}
+
+function routingWithSandboxArgsForStep(routing, step) {
+  const commandConfig = routing?.commands?.[step?.model] || null;
+  if (!commandConfig) return routing;
+
+  return {
+    ...routing,
+    commands: {
+      ...(routing.commands || {}),
+      [step.model]: {
+        ...commandConfig,
+        args: resolveSandboxArgs(routing, step.model, step.role),
+      },
+    },
+  };
+}
+
 function findDoctorCommandConfig(routing, provider) {
   const commands = routing.commands || {};
   if (commands[provider]) return commands[provider];
@@ -2078,7 +2120,8 @@ function createLiveRunStep({
       );
     }
 
-    const { code, output } = await executor(step.model, sections.join('\n'), routing, env, {
+    const stepRouting = routingWithSandboxArgsForStep(routing, step);
+    const { code, output } = await executor(step.model, sections.join('\n'), stepRouting, env, {
       appendRunEvent: appendEvent,
       runId,
       role: step.role,
@@ -3350,9 +3393,11 @@ export {
   parseApprovalSignal,
   parseArgs,
   recommendWorkflow,
+  resolveSandboxArgs,
   resolveEffectivePhase,
   resolveGate,
   resolveOwnership,
+  isReviewLaneEligible,
   runGate,
   shouldRunPostflightGate,
   scoreSpecialist,

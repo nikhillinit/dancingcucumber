@@ -17,10 +17,12 @@ const {
   executeWorkflow,
   generateRunId,
   getGateRunPlan,
+  isReviewLaneEligible,
   isProductionFinancial,
   main,
   parseApprovalSignal,
   parseArgs,
+  resolveSandboxArgs,
   resolveEffectivePhase,
   resolveOwnership,
   shouldRunPostflightGate,
@@ -100,6 +102,7 @@ function routingFixture() {
         binEnv: 'CODEX_BIN',
         defaultBin: 'codex',
         args: ['exec', '--sandbox', 'workspace-write'],
+        readOnlyArgs: ['exec', '--sandbox', 'read-only'],
       },
     },
   };
@@ -120,6 +123,7 @@ function routingWithLadder({ enabled = true, rungs = ['claude', 'codex', 'kimi',
       binEnv: 'GEMINI_BIN',
       defaultBin: 'gemini',
       args: ['--output-format', 'text', '--yolo', '--prompt='],
+      readOnlyArgs: ['--output-format', 'text', '--prompt='],
     },
   };
   return routing;
@@ -465,10 +469,12 @@ describe('Hermes router public surface', () => {
         'getGateRunPlan',
         'isCliEntryPoint',
         'isProductionFinancial',
+        'isReviewLaneEligible',
         'main',
         'parseApprovalSignal',
         'parseArgs',
         'recommendWorkflow',
+        'resolveSandboxArgs',
         'resolveEffectivePhase',
         'resolveGate',
         'resolveOwnership',
@@ -558,6 +564,68 @@ describe('argument parsing and routing decisions', () => {
     assert.equal(chooseModel('repo-wide architecture scan', 'production', routing), 'kimi');
     assert.equal(chooseModel('small fix', 'production', routing, 'claude'), 'claude');
     assert.equal(chooseModel('unknown phase', 'maintenance', routing), 'claude');
+  });
+
+  test('resolveSandboxArgs makes non-owner codex lanes read-only and fails unknown roles closed', () => {
+    const routing = routingWithLadder();
+
+    for (const role of [
+      'reviewer',
+      'comparator',
+      'synthesis',
+      'specialist',
+      'audit',
+      'blind',
+      'redteam',
+      'rebuttal',
+    ]) {
+      const args = resolveSandboxArgs(routing, 'codex', role);
+      assert.deepEqual(args, ['exec', '--sandbox', 'read-only']);
+      assert.equal(args.includes('workspace-write'), false);
+    }
+
+    assert.deepEqual(resolveSandboxArgs(routing, 'codex', 'unexpected-role'), [
+      'exec',
+      '--sandbox',
+      'read-only',
+    ]);
+  });
+
+  test('resolveSandboxArgs preserves owner write flags and read-only-by-construction args', () => {
+    const routing = routingWithLadder();
+
+    assert.deepEqual(resolveSandboxArgs(routing, 'codex', 'owner'), [
+      'exec',
+      '--sandbox',
+      'workspace-write',
+    ]);
+    assert.deepEqual(resolveSandboxArgs(routing, 'gemini', 'owner'), [
+      '--output-format',
+      'text',
+      '--yolo',
+      '--prompt=',
+    ]);
+    assert.deepEqual(resolveSandboxArgs(routing, 'gemini', 'reviewer'), [
+      '--output-format',
+      'text',
+      '--prompt=',
+    ]);
+    assert.deepEqual(resolveSandboxArgs(routing, 'claude', 'reviewer'), ['-p']);
+    assert.deepEqual(resolveSandboxArgs(routing, 'kimi', 'reviewer'), [
+      '--print',
+      '--input-format',
+      'text',
+      '--final-message-only',
+    ]);
+    assert.deepEqual(resolveSandboxArgs(routing, 'agy', 'reviewer'), []);
+  });
+
+  test('isReviewLaneEligible excludes unproven or auth-dead models from deliberation lanes', () => {
+    assert.equal(isReviewLaneEligible('agy'), false);
+    assert.equal(isReviewLaneEligible('gemini'), false);
+    assert.equal(isReviewLaneEligible('claude'), true);
+    assert.equal(isReviewLaneEligible('codex'), true);
+    assert.equal(isReviewLaneEligible('kimi'), true);
   });
 
   test('scoreSpecialist selects weighted matches and uses risk order as a tiebreaker', () => {
@@ -1103,6 +1171,34 @@ describe('test fakes and DI seams', () => {
     assert.equal(child.pid, 4321);
     assert.deepEqual(child.stdinWrites, ['prompt body']);
     assert.equal(child.stdinEnded(), true);
+  });
+
+  test('createLiveRunStep applies read-only codex args for reviewer spawn', async () => {
+    const clock = createFakeClock();
+    const spawn = createScriptedSpawn([{ stdout: ['APPROVED'], code: 0 }], { clock });
+    const routing = routingWithLadder();
+    const runStep = createLiveRunStep({
+      routing,
+      env: { CODEX_BIN: process.execPath },
+      modelClock: clock,
+      executor(model, prompt, effectiveRouting, env, seams) {
+        return executeModelCapture(model, prompt, effectiveRouting, env, {
+          ...seams,
+          spawn,
+        });
+      },
+    });
+
+    const pending = runStep({
+      step: { role: 'reviewer', action: 'review diff', model: 'codex' },
+      input: 'diff body',
+    });
+    spawn.flushNext();
+    const result = await pending;
+
+    assert.equal(result.approved, true);
+    assert.deepEqual(spawn.calls[0].args, ['exec', '--sandbox', 'read-only']);
+    assert.deepEqual(routing.commands.codex.args, ['exec', '--sandbox', 'workspace-write']);
   });
 
   test('scripted spawn can delay close through the injected clock only', async () => {
