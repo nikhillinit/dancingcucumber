@@ -16,6 +16,34 @@ const WORKFLOW_DEFERRED_BEHAVIOR = [
   'artifact handoff',
   'review platform automation',
 ];
+const DEFAULT_MODEL_TIMEOUT_MS = 600000;
+const MODEL_FAILURE = Object.freeze({
+  SPAWN_ERROR: 'spawn_error',
+  TIMEOUT: 'timeout',
+  NONZERO_EXIT: 'nonzero_exit',
+  EMPTY_OUTPUT: 'empty_output',
+  RATE_LIMITED: 'rate_limited',
+});
+const MODEL_ENV_BLOCKLIST = [
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+  'OPENROUTER_API_KEY',
+  'PERPLEXITY_API_KEY',
+  'QWEN_API_KEY',
+  'DASHSCOPE_API_KEY',
+  'MOONSHOT_API_KEY',
+  'KIMI_API_KEY',
+  'XAI_API_KEY',
+  'GROK_API_KEY',
+  'NOUS_API_KEY',
+  'HF_TOKEN',
+  'MISTRAL_API_KEY',
+  'COHERE_API_KEY',
+];
+const DEFAULT_RATE_LIMIT_SIGNATURES = [];
 
 const DEFAULT_DEBATE = {
   comparators: ['claude', 'codex', 'kimi'],
@@ -545,42 +573,256 @@ function printDoctorReport(report, stdout = process.stdout) {
   stdout.write(`${formatDoctorReport(report)}\n`);
 }
 
-function executeModel(model, prompt, routing, env = process.env) {
-  const commandConfig = routing.commands?.[model];
-  if (!commandConfig) {
-    throw new Error(`No command config for model: ${model}`);
+function createChildEnv(env = process.env) {
+  const childEnv = { ...env };
+  for (const key of MODEL_ENV_BLOCKLIST) {
+    delete childEnv[key];
   }
+  return childEnv;
+}
 
-  const bin = env[commandConfig.binEnv] || commandConfig.defaultBin;
-  if (!commandExists(bin)) {
-    throw new Error(
-      `Command not found for model "${model}": ${bin}. Set ${commandConfig.binEnv} or install the CLI.`
-    );
-  }
+const realClock = {
+  schedule(delayMs, callback) {
+    const id = setTimeout(callback, delayMs);
+    return {
+      cancel() {
+        clearTimeout(id);
+      },
+    };
+  },
+};
 
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(bin, commandConfig.args || [], {
-      stdio: ['pipe', 'inherit', 'inherit'],
-      shell: process.platform === 'win32',
-      env,
+function killProcessTree(pid, child, stderr = process.stderr) {
+  if (!pid) return;
+
+  if (process.platform === 'win32') {
+    const result = spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
     });
+    if (result.error || result.status !== 0) {
+      const detail = result.error?.message || `exit ${result.status}`;
+      stderr.write(`[hermes] WARNING: failed to kill process tree for pid ${pid}: ${detail}\n`);
+    }
+    return;
+  }
 
-    child.stdin.write(prompt);
-    child.stdin.end();
-    child.on('error', reject);
-    child.on('close', (code) => resolvePromise(code || 0));
+  if (child && typeof child.kill === 'function') {
+    child.kill();
+  }
+}
+
+function matchesRateLimitSignature(text, signatures = DEFAULT_RATE_LIMIT_SIGNATURES) {
+  const haystack = String(text || '');
+  if (!haystack || !Array.isArray(signatures)) return false;
+
+  return signatures.some((signature) => {
+    if (!signature) return false;
+    if (signature instanceof RegExp) return signature.test(haystack);
+    if (typeof signature === 'function') return Boolean(signature(haystack));
+    return haystack.includes(String(signature));
   });
 }
 
-// Sibling of executeModel that PIPES stdout so a step's output can be captured
-// and fed back into executeWorkflow. executeModel is left untouched so the
-// non-workflow path keeps inheriting stdout.
-function executeModelCapture(
+function classifyModelFailure({
+  code,
+  output,
+  stderr,
+  error,
+  timedOut = false,
+  captureOutput = false,
+  rateLimitSignatures = DEFAULT_RATE_LIMIT_SIGNATURES,
+}) {
+  const diagnosticText = [output, stderr, error?.message, error?.code].filter(Boolean).join('\n');
+
+  if (timedOut) return MODEL_FAILURE.TIMEOUT;
+  if (matchesRateLimitSignature(diagnosticText, rateLimitSignatures)) {
+    return MODEL_FAILURE.RATE_LIMITED;
+  }
+  if (error) return MODEL_FAILURE.SPAWN_ERROR;
+  if (code !== 0) return MODEL_FAILURE.NONZERO_EXIT;
+  if (captureOutput && String(output || '').trim() === '') {
+    return MODEL_FAILURE.EMPTY_OUTPUT;
+  }
+  return null;
+}
+
+function createModelResult({
+  code,
+  output,
+  stderr,
+  failure,
+  stdinError = null,
+  error = null,
+}) {
+  const result = {
+    code,
+    output,
+    stderr,
+    failure,
+    stdinError,
+  };
+  if (error) {
+    result.error = error;
+  }
+  return result;
+}
+
+function runModelAttempt({
+  bin,
+  args,
+  prompt,
+  env,
+  timeoutMs,
+  spawnImpl,
+  killTree,
+  clock,
+  captureOutput,
+  rateLimitSignatures,
+}) {
+  const childEnv = createChildEnv(env);
+  const stdio = captureOutput ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'inherit', 'inherit'];
+  let child = null;
+  let timeoutHandle = null;
+  let output = '';
+  let stderr = '';
+  let stdinError = null;
+  let settled = false;
+
+  return new Promise((resolvePromise) => {
+    function settle(partial) {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) {
+        timeoutHandle.cancel();
+      }
+      resolvePromise(
+        createModelResult({
+          output,
+          stderr,
+          stdinError,
+          ...partial,
+        })
+      );
+    }
+
+    function handleStdinError(error) {
+      stdinError = error;
+      if (error?.code === 'EPIPE' || error?.code === 'ECONNRESET') {
+        return;
+      }
+      settle({
+        code: 1,
+        failure: classifyModelFailure({
+          code: 1,
+          output,
+          stderr,
+          error,
+          captureOutput,
+          rateLimitSignatures,
+        }),
+        error,
+      });
+    }
+
+    try {
+      child = spawnImpl(bin, args, {
+        stdio,
+        shell: process.platform === 'win32',
+        env: childEnv,
+      });
+    } catch (error) {
+      settle({
+        code: 1,
+        failure: classifyModelFailure({
+          code: 1,
+          output,
+          stderr,
+          error,
+          captureOutput,
+          rateLimitSignatures,
+        }),
+        error,
+      });
+      return;
+    }
+
+    if (captureOutput) {
+      child.stdout?.on('data', (chunk) => {
+        output += chunk.toString();
+      });
+      child.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+    }
+
+    child.stdin?.on('error', handleStdinError);
+    child.on('error', (error) => {
+      settle({
+        code: 1,
+        failure: classifyModelFailure({
+          code: 1,
+          output,
+          stderr,
+          error,
+          captureOutput,
+          rateLimitSignatures,
+        }),
+        error,
+      });
+    });
+    child.on('close', (code) => {
+      const exitCode = code || 0;
+      settle({
+        code: exitCode,
+        failure: classifyModelFailure({
+          code: exitCode,
+          output,
+          stderr,
+          captureOutput,
+          rateLimitSignatures,
+        }),
+      });
+    });
+
+    timeoutHandle = clock.schedule(timeoutMs, () => {
+      try {
+        if (killTree) {
+          killTree(child.pid);
+        } else {
+          killProcessTree(child.pid, child);
+        }
+      } catch (error) {
+        process.stderr.write(
+          `[hermes] WARNING: failed to kill process tree for pid ${child.pid}: ${error.message}\n`
+        );
+      }
+      settle({
+        code: 124,
+        failure: MODEL_FAILURE.TIMEOUT,
+      });
+    });
+
+    try {
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+    } catch (error) {
+      handleStdinError(error);
+    }
+  });
+}
+
+async function executeModelCommand(
   model,
   prompt,
   routing,
   env = process.env,
-  { spawn: spawnImpl = spawn } = {}
+  {
+    spawn: spawnImpl = spawn,
+    killTree = null,
+    clock = realClock,
+    rateLimitSignatures = DEFAULT_RATE_LIMIT_SIGNATURES,
+    captureOutput = false,
+  } = {}
 ) {
   const commandConfig = routing.commands?.[model];
   if (!commandConfig) {
@@ -594,22 +836,56 @@ function executeModelCapture(
     );
   }
 
-  return new Promise((resolvePromise, reject) => {
-    const child = spawnImpl(bin, commandConfig.args || [], {
-      stdio: ['pipe', 'pipe', 'inherit'],
-      shell: process.platform === 'win32',
-      env,
-    });
+  const timeoutMs = Number(commandConfig.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS);
+  let result = null;
 
-    let output = '';
-    child.stdout.on('data', (chunk) => {
-      output += chunk.toString();
+  // Pipeline: sanitize env -> spawn -> write prompt -> classify -> retry once.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    result = await runModelAttempt({
+      bin,
+      args: commandConfig.args || [],
+      prompt,
+      env,
+      timeoutMs,
+      spawnImpl,
+      killTree,
+      clock,
+      captureOutput,
+      rateLimitSignatures,
     });
-    child.stdin.write(prompt);
-    child.stdin.end();
-    child.on('error', reject);
-    child.on('close', (code) => resolvePromise({ code: code || 0, output }));
+    if (result.failure !== MODEL_FAILURE.SPAWN_ERROR) {
+      return result;
+    }
+  }
+
+  return result;
+}
+
+function executeModel(model, prompt, routing, env = process.env, seams = {}) {
+  return executeModelCommand(model, prompt, routing, env, {
+    ...seams,
+    captureOutput: false,
+  }).then((result) => result.code);
+}
+
+// Sibling of executeModel that PIPES stdout so a step's output can be captured
+// and fed back into executeWorkflow. executeModel keeps inheriting stdout so the
+// non-workflow path keeps inheriting stdout.
+async function executeModelCapture(
+  model,
+  prompt,
+  routing,
+  env = process.env,
+  seams = {}
+) {
+  const result = await executeModelCommand(model, prompt, routing, env, {
+    ...seams,
+    captureOutput: true,
   });
+  if (result.failure === MODEL_FAILURE.SPAWN_ERROR && result.error) {
+    throw result.error;
+  }
+  return { code: result.code, output: result.output };
 }
 
 const APPROVAL_SENTINEL = 'APPROVED';
@@ -1264,6 +1540,7 @@ export {
   createRoutingPlan,
   evaluateReadiness,
   executeModelCapture,
+  executeModelCommand,
   executeWorkflow,
   generateRunId,
   getGateRunPlan,

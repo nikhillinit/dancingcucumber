@@ -11,6 +11,7 @@ const {
   createRoutingPlan,
   evaluateReadiness,
   executeModelCapture,
+  executeModelCommand,
   generateRunId,
   getGateRunPlan,
   isProductionFinancial,
@@ -358,6 +359,7 @@ describe('Hermes router public surface', () => {
         'createRoutingPlan',
         'evaluateReadiness',
         'executeModelCapture',
+        'executeModelCommand',
         'executeWorkflow',
         'generateRunId',
         'getGateRunPlan',
@@ -675,7 +677,7 @@ describe('test fakes and DI seams', () => {
       { clock }
     );
     const routing = routingFixture();
-    const env = { CODEX_BIN: process.execPath, KEEP: 'yes' };
+    const env = { CODEX_BIN: process.execPath, KEEP: 'yes', OPENAI_API_KEY: 'secret' };
 
     const pending = executeModelCapture('codex', 'prompt body', routing, env, { spawn });
     const child = spawn.flushNext();
@@ -685,7 +687,12 @@ describe('test fakes and DI seams', () => {
     assert.equal(spawn.calls.length, 1);
     assert.equal(spawn.calls[0].bin, process.execPath);
     assert.deepEqual(spawn.calls[0].args, ['exec', '--sandbox', 'workspace-write']);
-    assert.deepEqual(spawn.calls[0].options.env, env);
+    assert.notEqual(spawn.calls[0].options.env, env);
+    assert.deepEqual(spawn.calls[0].options.env, {
+      CODEX_BIN: process.execPath,
+      KEEP: 'yes',
+    });
+    assert.equal(env.OPENAI_API_KEY, 'secret');
     assert.equal(child.pid, 4321);
     assert.deepEqual(child.stdinWrites, ['prompt body']);
     assert.equal(child.stdinEnded(), true);
@@ -717,7 +724,10 @@ describe('test fakes and DI seams', () => {
   });
 
   test('executeModelCapture rejects child error events from the spawn seam', async () => {
-    const spawn = createScriptedSpawn([{ error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) }]);
+    const spawn = createScriptedSpawn([
+      { error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) },
+      { error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) },
+    ]);
 
     const pending = executeModelCapture(
       'codex',
@@ -727,12 +737,18 @@ describe('test fakes and DI seams', () => {
       { spawn }
     );
     spawn.flushNext();
+    await Promise.resolve();
+    spawn.flushNext();
 
     await assert.rejects(pending, /spawn ENOENT/);
+    assert.equal(spawn.calls.length, 2);
   });
 
   test('executeModelCapture rejects synchronous spawn failures from the spawn seam', async () => {
-    const spawn = createScriptedSpawn([{ spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) }]);
+    const spawn = createScriptedSpawn([
+      { spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) },
+      { spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) },
+    ]);
 
     await assert.rejects(
       executeModelCapture(
@@ -744,6 +760,7 @@ describe('test fakes and DI seams', () => {
       ),
       /spawn failed/
     );
+    assert.equal(spawn.calls.length, 2);
   });
 
   test('recording kill fake stores pid and signal for later timeout assertions', () => {
@@ -930,31 +947,269 @@ describe('main dependency seams', () => {
 });
 
 describe('future timeout, retry, and environment contracts', () => {
-  test('per-command timeout kills the child and classifies failure as timeout', { todo: true }, () => {
-    // W1 flips this to a hard assertion after the shared timeout wrapper lands.
+  function routingWithTimeout(timeoutMs) {
+    const routing = routingFixture();
+    routing.commands.codex = { ...routing.commands.codex, timeoutMs };
+    return routing;
+  }
+
+  test('per-command timeout kills the child and classifies failure as timeout', async () => {
+    const clock = createFakeClock();
+    const killTree = createRecordingKill();
+    const spawn = createScriptedSpawn([{ hang: true, pid: 4321 }], { clock });
+
+    const pending = executeModelCommand(
+      'codex',
+      'prompt',
+      routingWithTimeout(50),
+      { CODEX_BIN: process.execPath },
+      { spawn, killTree, clock, captureOutput: true }
+    );
+    spawn.flushNext();
+    clock.advance(49);
+    assert.equal(killTree.calls.length, 0);
+    clock.advance(1);
+
+    const result = await pending;
+
+    assert.equal(result.code, 124);
+    assert.equal(result.failure, 'timeout');
+    assert.equal(result.output, '');
+    assert.equal(result.stderr, '');
+    assert.deepEqual(killTree.calls, [{ pid: 4321, signal: 'SIGTERM' }]);
+    assert.equal(spawn.calls.length, 1);
   });
 
-  test('Windows tree-kill invokes taskkill /pid <pid> /T /F when a run times out', { todo: true }, () => {
-    // W1 flips this to a hard assertion against the recording kill seam.
+  test('Windows tree-kill seam receives the timed-out child pid', async () => {
+    const clock = createFakeClock();
+    const killTree = createRecordingKill();
+    const spawn = createScriptedSpawn([{ hang: true, pid: 2468 }], { clock });
+
+    const pending = executeModelCommand(
+      'codex',
+      'prompt',
+      routingWithTimeout(10),
+      { CODEX_BIN: process.execPath },
+      { spawn, killTree, clock, captureOutput: true }
+    );
+    spawn.flushNext();
+    clock.advance(10);
+
+    const result = await pending;
+
+    assert.equal(result.failure, 'timeout');
+    assert.deepEqual(killTree.calls, [{ pid: 2468, signal: 'SIGTERM' }]);
   });
 
-  test('env sanitization strips API key and credential blocklist without mutating process.env', { todo: true }, () => {
-    // W1/E2 flips this to a hard assertion against the child env clone.
+  test('env sanitization strips API key and credential blocklist without mutating caller env', async () => {
+    const clock = createFakeClock();
+    const spawn = createScriptedSpawn([{ stdout: ['ok'], code: 0 }], { clock });
+    const env = {
+      CODEX_BIN: process.execPath,
+      OPENAI_API_KEY: 'openai-secret',
+      ANTHROPIC_API_KEY: 'anthropic-secret',
+      GOOGLE_APPLICATION_CREDENTIALS: 'google-creds.json',
+      GH_TOKEN: 'gh-token',
+      GITHUB_TOKEN: 'github-token',
+      KEEP_ME: 'keep',
+    };
+
+    const pending = executeModelCommand(
+      'codex',
+      'prompt',
+      routingFixture(),
+      env,
+      { spawn, clock, captureOutput: true }
+    );
+    spawn.flushNext();
+    const result = await pending;
+    const childEnv = spawn.calls[0].options.env;
+
+    assert.equal(result.failure, null);
+    assert.notEqual(childEnv, env);
+    assert.equal('OPENAI_API_KEY' in childEnv, false);
+    assert.equal('ANTHROPIC_API_KEY' in childEnv, false);
+    assert.equal('GOOGLE_APPLICATION_CREDENTIALS' in childEnv, false);
+    assert.equal(childEnv.GH_TOKEN, 'gh-token');
+    assert.equal(childEnv.GITHUB_TOKEN, 'github-token');
+    assert.equal(childEnv.KEEP_ME, 'keep');
+    assert.equal(env.OPENAI_API_KEY, 'openai-secret');
+    assert.equal(env.ANTHROPIC_API_KEY, 'anthropic-secret');
+    assert.equal(env.GOOGLE_APPLICATION_CREDENTIALS, 'google-creds.json');
   });
 
-  test('failure classification enum covers spawn_error, timeout, nonzero_exit, empty_output, rate_limited', { todo: true }, () => {
-    // W1 flips this to a hard assertion once failures are normalized.
+  test('failure classification enum covers spawn_error, timeout, nonzero_exit, empty_output, rate_limited', async () => {
+    async function runClosed(script, options = {}) {
+      const clock = createFakeClock();
+      const spawn = createScriptedSpawn([script], { clock });
+      const pending = executeModelCommand(
+        'codex',
+        'prompt',
+        routingWithTimeout(options.timeoutMs ?? 100),
+        { CODEX_BIN: process.execPath },
+        {
+          spawn,
+          killTree: options.killTree ?? createRecordingKill(),
+          clock,
+          captureOutput: true,
+          rateLimitSignatures: options.rateLimitSignatures,
+        }
+      );
+      spawn.flushNext();
+      if (options.advanceMs !== undefined) {
+        clock.advance(options.advanceMs);
+      }
+      return pending;
+    }
+
+    const spawnErrorSpawn = createScriptedSpawn([
+      { spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) },
+      { spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) },
+    ]);
+    const spawnError = await executeModelCommand(
+      'codex',
+      'prompt',
+      routingFixture(),
+      { CODEX_BIN: process.execPath },
+      { spawn: spawnErrorSpawn, captureOutput: true }
+    );
+    const timeout = await runClosed({ hang: true }, { advanceMs: 100, timeoutMs: 100 });
+    const nonzero = await runClosed({ stdout: ['partial output'], code: 7 });
+    const empty = await runClosed({ stdout: ['   \n\t'], code: 0 });
+    const rateLimited = await runClosed(
+      { stdout: [''], stderr: ['provider says retry later'], code: 7 },
+      { rateLimitSignatures: ['retry later'] }
+    );
+
+    assert.deepEqual(
+      [
+        spawnError.failure,
+        timeout.failure,
+        nonzero.failure,
+        empty.failure,
+        rateLimited.failure,
+      ],
+      ['spawn_error', 'timeout', 'nonzero_exit', 'empty_output', 'rate_limited']
+    );
+    assert.equal(spawnErrorSpawn.calls.length, 2);
+    assert.equal(rateLimited.code, 7);
   });
 
-  test('settle-once prevents duplicate side effects when timeout-kill is followed by close', { todo: true }, () => {
-    // W1/E4 flips this to a hard assertion using a kill-then-close scripted child.
+  test('settle-once prevents duplicate side effects when timeout-kill is followed by close', async () => {
+    const clock = createFakeClock();
+    const killTree = createRecordingKill();
+    const spawn = createScriptedSpawn([{ hang: true, pid: 9876 }], { clock });
+    let settlements = 0;
+
+    const pending = executeModelCommand(
+      'codex',
+      'prompt',
+      routingWithTimeout(25),
+      { CODEX_BIN: process.execPath },
+      { spawn, killTree, clock, captureOutput: true }
+    ).then((result) => {
+      settlements += 1;
+      return result;
+    });
+    const child = spawn.flushNext();
+    clock.advance(25);
+    child.close(0);
+
+    const result = await pending;
+
+    assert.equal(result.failure, 'timeout');
+    assert.equal(result.code, 124);
+    assert.equal(settlements, 1);
+    assert.deepEqual(killTree.calls, [{ pid: 9876, signal: 'SIGTERM' }]);
+    assert.equal(clock.pending(), 0);
   });
 
-  test('bounded retry retries spawn_error exactly once and never retries timeout', { todo: true }, () => {
-    // W1/T1 flips this to a hard assertion when retry policy is implemented.
+  test('bounded retry retries spawn_error exactly once and never retries timeout', async () => {
+    const retryClock = createFakeClock();
+    const retrySpawn = createScriptedSpawn(
+      [
+        { spawnError: Object.assign(new Error('spawn failed'), { code: 'ENOENT' }) },
+        { stdout: ['ok'], code: 0, pid: 5555 },
+      ],
+      { clock: retryClock }
+    );
+
+    const retried = executeModelCommand(
+      'codex',
+      'prompt',
+      routingFixture(),
+      { CODEX_BIN: process.execPath },
+      { spawn: retrySpawn, clock: retryClock, captureOutput: true }
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    retrySpawn.flushNext();
+
+    assert.deepEqual(await retried, {
+      code: 0,
+      output: 'ok',
+      stderr: '',
+      failure: null,
+      stdinError: null,
+    });
+    assert.equal(retrySpawn.calls.length, 2);
+
+    const timeoutClock = createFakeClock();
+    const timeoutKill = createRecordingKill();
+    const timeoutSpawn = createScriptedSpawn([{ hang: true, pid: 6666 }], {
+      clock: timeoutClock,
+    });
+    const timedOut = executeModelCommand(
+      'codex',
+      'prompt',
+      routingWithTimeout(30),
+      { CODEX_BIN: process.execPath },
+      { spawn: timeoutSpawn, killTree: timeoutKill, clock: timeoutClock, captureOutput: true }
+    );
+    timeoutSpawn.flushNext();
+    timeoutClock.advance(30);
+
+    assert.equal((await timedOut).failure, 'timeout');
+    assert.equal(timeoutSpawn.calls.length, 1);
+    assert.deepEqual(timeoutKill.calls, [{ pid: 6666, signal: 'SIGTERM' }]);
   });
 
-  test('large prompt to fast-exiting child does not throw uncaught EPIPE or ECONNRESET', { todo: true }, () => {
-    // W1 flips this to a hard assertion (no uncaught throw).
+  test('large prompt to fast-exiting child does not throw uncaught EPIPE or ECONNRESET', async () => {
+    const observed = [];
+    const onUncaught = (error) => observed.push(error);
+    const onUnhandled = (error) => observed.push(error);
+    process.on('uncaughtException', onUncaught);
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      for (const errorCode of ['EPIPE', 'ECONNRESET']) {
+        const clock = createFakeClock();
+        const spawn = createScriptedSpawn(
+          [
+            {
+              stdinErrorOnWrite: Object.assign(new Error(errorCode), { code: errorCode }),
+              code: 1,
+            },
+          ],
+          { clock }
+        );
+        const pending = executeModelCommand(
+          'codex',
+          'x'.repeat(1024 * 1024),
+          routingFixture(),
+          { CODEX_BIN: process.execPath },
+          { spawn, clock, captureOutput: true }
+        );
+        spawn.flushNext();
+        const result = await pending;
+
+        assert.equal(result.failure, 'nonzero_exit');
+        assert.equal(result.stdinError.code, errorCode);
+      }
+      assert.deepEqual(observed, []);
+    } finally {
+      process.off('uncaughtException', onUncaught);
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });
