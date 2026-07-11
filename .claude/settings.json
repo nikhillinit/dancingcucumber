@@ -4,7 +4,16 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/guard-frozen-floor.mjs" }
+          { "type": "command", "command": "node .claude/hooks/guard-frozen-floor.mjs" },
+          { "type": "command", "command": "node .claude/hooks/guard-secrets.mjs" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/floor-drift-check.mjs" }
         ]
       }
     ]

@@ -1,5 +1,41 @@
 {
   "version": 2,
+  "rateLimits": {
+    "enabled": false,
+    "note": "Disabled until an operator flips it after a clean solo run; signatures are version-pinned and maintained from observed ledger evidence.",
+    "signatures": {
+      "claude": {
+        "source": "usage limit|rate limit|overloaded",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "codex": {
+        "source": "rate.?limit|429|usage cap|quota",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "agy": {
+        "source": "RESOURCE_EXHAUSTED|quota|429",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      },
+      "kimi": {
+        "source": "rate.?limit|quota|429",
+        "flags": "i",
+        "note": "version-pinned, maintained from evidence"
+      }
+    },
+    "defaults": {
+      "fallbackMinutes": 60,
+      "providers": {
+        "claude": 60,
+        "kimi": 60,
+        "agy": 60,
+        "codex": 360
+      }
+    }
+  },
+  "ladder": { "enabled": false, "rungs": ["claude", "codex", "kimi", "agy"] },
   "defaults": { "research": "claude", "production": "codex", "distribution": "claude" },
   "ownership": {
     "research": {
@@ -20,7 +56,7 @@
       "artifact": "PR-ready summary", "gate": "npm run lint"
     }
   },
-  "debate": { "comparators": ["claude", "codex", "kimi"], "synthesis": "claude" },
+  "debate": { "comparators": ["claude", "codex", "kimi"], "rebuttal": "claude", "synthesis": "claude" },
   "longContextModel": "kimi",
   "longContextTriggers": ["full repo audit", "repo-wide", "system-wide", "architecture scan", "cross-module trace"],
   "manualFlags": { "--claude": "claude", "--codex": "codex", "--kimi": "kimi", "--gemini": "gemini", "--agy": "agy" },
@@ -100,10 +136,10 @@
     "distribution": "npm run lint"
   },
   "commands": {
-    "claude": { "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
-    "codex": { "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "workspace-write"] },
-    "kimi": { "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"] },
-    "gemini": { "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="] },
-    "agy": { "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
+    "claude": { "family": "anthropic", "binEnv": "CLAUDE_CODE_BIN", "defaultBin": "claude", "args": ["-p"] },
+    "codex": { "family": "openai", "binEnv": "CODEX_BIN", "defaultBin": "codex", "args": ["exec", "--sandbox", "workspace-write"], "readOnlyArgs": ["exec", "--sandbox", "read-only"], "timeoutMs": 1800000 },
+    "kimi": { "family": "moonshot", "binEnv": "KIMI_CODE_BIN", "defaultBin": "kimi-cli", "args": ["--print", "--input-format", "text", "--final-message-only"], "timeoutMs": 900000 },
+    "gemini": { "family": "google", "binEnv": "GEMINI_BIN", "defaultBin": "gemini", "args": ["--output-format", "text", "--yolo", "--prompt="], "readOnlyArgs": ["--output-format", "text", "--prompt="] },
+    "agy": { "family": "google", "binEnv": "AGY_BIN", "defaultBin": "agy", "args": [] }
   }
 }
